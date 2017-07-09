@@ -1,0 +1,47 @@
+<script id="main" type="text/template">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header" data-bind-path="data.main.header">
+          {{? it.full }}
+            <button type="button" class="btn btn-danger pull-right" data-value="close" aria-hidden="true">
+              <span class="glyphicon glyphicon-remove"></span><span>Close</span>
+            </button>
+            <button type="button" class="btn btn-danger pull-right" data-value="test" aria-hidden="true">
+              <span class="glyphicon glyphicon-remove"></span><span>Test</span>
+            </button>
+          {{??}}
+            <button type="button" data-value="close">&times;</button>
+          {{?}}
+          <h4 class="modal-title" data-bind-name="title">{{=it.title}}</h4>
+        </div>
+        <div class="modal-body" data-bind-path="data.main.body">
+        </div>
+        <div class="modal-footer" data-bind-path="data.main.footer">
+        </div>
+      </div>
+    </div>
+</script>
+<script id="backdrop" type="text/template">
+  <div class="modal-backdrop fade in"></div>
+</script>
+<script id="message" type="text/template">
+  <p>{{=it.message}}</p>
+</script>
+<script id="button" type="text/template">
+  <button {{? it.style }}style="{{=it.style}}"{{?}} data-event-name="{{=it['data-event-name'] || 'btn-click'}}" data-value="{{=it.value}}" type="button" class="btn btn-default">{{=it.text}}</button>
+</script>
+<script id="style" type="text/template">
+  .modal.no-scroll {
+      overflow: auto;
+  }
+  .modal .modal-dialog {
+      box-sizing: content-box;
+  }
+  .modal .btn-default {
+      min-width: 80px; float: right; margin: 5px;
+  }
+  .modal-body form,
+  .modal-body .form {
+      position: static;
+  }
+</script>

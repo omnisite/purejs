@@ -1,0 +1,29 @@
+<script id="input" type="text/template">
+    <div class="form-group{{? it.class }} {{=it.class}}{{?}}">
+        <label for="{{=it.id}}">{{=it.label}}</label>
+        <input id="{{=it.id}}" data-bind-name="{{=it.id}}" type="{{=it.type}}" class="form-control" placeholder="{{=it.placeholder}}">
+    </div>
+</script>
+<script id="dropdown" type="text/template">
+    <div class="form-group{{? it.class }} {{=it.class}}{{?}}">
+        <label for="{{=it.id}}">{{=it.label}}</label>
+        <select id="{{=it.id}}" data-bind-name="{{=it.id}}" class="form-control"{{? it.data }} data-source="{{=it.data}}"{{?}}>
+            {{~it.options :value:index}}
+            <option>{{=value}}</option>
+            {{~}}
+        </select>
+    </div>
+</script>
+<script id="checkbox" type="text/template">
+    <div class="checkbox{{? it.class }} {{=it.class}}{{?}}">
+        <label><input id="{{=it.id}}" data-bind-name="{{=it.id}}" type="checkbox">{{=it.label}}</label>
+    </div>
+</script>
+<script id="button" type="text/template">
+    <button type="{{=it.type}}" class="btn{{? it.class }} {{=it.class}}{{?}}">{{=it.label}}</button>
+</script>
+<script id="style" type="text/template">
+    .form {
+        position: absolute; top: 100px; left: 50px; border: 1px solid #EEE; padding: 20px;
+    }
+</script>

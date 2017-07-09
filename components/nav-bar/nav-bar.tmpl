@@ -1,0 +1,30 @@
+<script id="main" type="text/template">
+  <div class="container-fluid">
+  </div>
+</script>
+<script id="header" type="text/template">
+  <div class="navbar-header" data-parent="#{{#def.id}}" href="#{{=it.id}}">
+    <a class="navbar-brand" href="#">{{=it.name}}</a>
+  </div>
+</script>
+<script id="item" type="text/template">
+  <li {{? it.active }} class="active"{{?}}>
+    <a href="#">{{=it.name}}</a>
+  </li>
+</script>
+<script id="dropdown" type="text/template">
+  <li class="dropdown">
+    <a class="dropdown-toggle" data-toggle="dropdown" href="#{{=it.id}}">
+      {{=it.name}}
+      <span class="caret"></span>
+    </a>
+  </li>
+</script>
+<script id="style" type="text/template">
+  body {
+    padding-top: 60px;
+  }
+  body > .navbar {
+    position: fixed; top: 0; left: 0; width: 100%; z-index: 1000;
+  }
+</script>

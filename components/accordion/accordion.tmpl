@@ -1,0 +1,47 @@
+<script id="main" type="text/template">
+	<div class="panel-heading">
+		<h4 class="panel-title">
+			<a data-toggle="collapse" data-parent="#{{#def.id}}" data-id="#{{=it.id}}" href="Javascript:">
+			<span class="glyphicon glyphicon-folder-close"></span>{{=it.name}}</a>
+		</h4>
+	</div>
+	<div id="{{=it.id}}" data-path="{{=it.path}}" class="panel-collapse collapse">
+		<div class="panel-body">
+			<table class="table">
+				<tbody>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</script>
+<script id="item" type="text/template">
+	<tr{{? it.id }} data-id="{{=it.id}}"{{?}}{{? it.path }} data-path="{{=it.path}}"{{?}} data-key="{{=it.key}}">
+		<td>
+			<a href="Javascript:">
+				<span class="glyphicon glyphicon-pencil text-primary">
+					{{=it.key}}
+				</span>
+			</a>
+		</td>
+	</tr>
+</script>
+<script id="style" type="text/template">
+	.accordion .panel-body {
+  		font-size: 0.8em;
+  		padding-left: 5px;
+	    max-height: 300px;
+	    overflow-y: auto;
+	}
+	.accordion .panel-body .text-primary {
+		font-size: 1em;
+		letter-spacing: 2px;
+		font-weight: 500;
+		font-family: sans-serif;
+	}
+	.accordion .panel-default {
+		margin-bottom: 10px;
+	}
+	.accordion .glyphicon-pencil:before {
+		margin-right: 5px;
+	}
+</script>
