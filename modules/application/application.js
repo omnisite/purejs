@@ -17,8 +17,7 @@ define(function() {
 
 			ext: {
 				main: function() {
-					var el  = this.view().$el().run();
-					var app = this;
+					var app = this, el = this.view().$el().run();
 					app.deps('components.nav').attach(document.body);
 					var lay = app.child('layout', app.deps('components.layout'));
 					lay.grid(2, 3, function(elem, row, col) {
@@ -30,6 +29,26 @@ define(function() {
 						var c = m.chain(function(e) { return e.children.item(0); });
 						app.deps('components.accor').attach(c);
 					});
+				},
+				info: function() {
+					var show;
+					if ((show = sys.get('components.slideshow'))) {
+						show.toggle();
+					}else {
+						sys.run().eff('sys.loader.component').run('components/slide-show/slide-show').bind(function(x) {
+
+							return x.create({ name: 'slideshow' }).pure();
+
+						}).run(function(mdl) {
+						  
+							mdl.read = mdl.view().read().run('main', { title: 'PureJS Info', full: true });
+							mdl.read.attach.run();
+							mdl.create();
+							mdl.createTest();
+							mdl.toggle();
+							return mdl;
+						});
+					}
 				}
 			},
 
@@ -42,6 +61,13 @@ define(function() {
 						var navbr  = app.deps('components.nav-bar').create('navbar');
 						var accor  = app.deps('components.accordion').create(app.accor.call(module));
 
+						var link   = module.node('items').parse(app.link, true).link('typeMap').add('node', {
+							base1: 'base',
+							utils1: 'utils',
+							effects1: 'effects',
+							types1: 'types'
+						});
+
 						return [ navbr.pure(), accor.pure() ].lift(function(n, a) {
 
 							n.item({ id: 'home', name: 'Home' });
@@ -51,10 +77,12 @@ define(function() {
 								opts.item({ id: 'effects',   name: 'Effects'   });
 								n.item({ id: 'components', name: 'Components' });
 								n.item({ id: 'types', name: 'Types' });
+								n.item({ id: 'info', glyph: 'glyphicon-info-sign', 'class': 'pull-right', href: 'Javascript:' });
+								n.on('click', '[data-id="info"]', module.info.bind(module));
 							});
 
-							a.control('main').run();
 							a.observe('change', 'data.current.item', 'data.control.main.codeb');
+							a.control('main').run();
 
 							app.deps('components').nav   = n;
 							app.deps('components').accor = a;
@@ -64,6 +92,44 @@ define(function() {
 						}).cont();
 					}
 				})(this);
+			},
+
+			link: {
+				base: function(info, key) {
+					var node = sys.find(info.id);
+					return key ? [ { name: key, key: key } ]
+					: node.bind(function(v, k, i, o) {
+						return { name: k, key: k };
+					});
+				},
+				utils: function(info, key) {
+					var node = sys.find(info.id);
+					return key ? [ { name: key, key: key } ]
+					: node.bind(function(v, k, i, o) {
+						return { name: k, key: k };
+					}).select(function(x) {
+						return x.key != 'point';
+					});
+				},
+				effects: function(info) {
+					var node = sys.find(info.id);
+					return node.map(function(tval, tkey) {
+						return tval.get('factory').map(function(f, k) {
+							return tval.get(k).map(function(v, t) {
+								return { key: [ tkey, k, t ].join('.') };
+							});
+						});
+					}).flatten();
+				},
+				types: function(info) {
+					var node = sys.find(info.id);
+					return node.get('index').map(function(id) {
+						return sys.find(id);
+					}).bind(function(type) {
+						var parent = type.parent();
+						return { id: parent.uid(), key: type.get('type.$code') + '.type.fn.proto', path: parent.identifier() };
+					});
+				}
 			},
 
 			accor: function() {

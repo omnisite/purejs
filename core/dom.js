@@ -445,7 +445,8 @@ define(function() {
                         })(
                             (function(support, emulate, handler) {
                                 return function transitionEnd(elem, callback, duration) {
-                                    support ? handler(elem, support.end, callback) : emulate(elem, duration, callback);                                 
+                                    support ? handler(elem, support.end, callback) : emulate(elem, duration, callback);
+                                    return elem;
                                 }
                             }),
 

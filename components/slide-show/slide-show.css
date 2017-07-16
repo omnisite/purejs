@@ -1,12 +1,7 @@
 .carousel.carousel-fit {
-  position: relative;
-  /* When sliding, use the maximum height we have */
-  /* Center horizontally the content of the slides */
-  /* To be centered, the images of the slides need to be inline */
-  /* Maximize the captions in the wrapper */
+  position: relative; margin-top: 20%;
 }
 .carousel.carousel-fit.slide {
-  /* Hide the content outside the carousel when sliding */
   overflow: hidden;
 }
 .carousel.carousel-fit .carousel-inner > .next,
@@ -15,6 +10,33 @@
 }
 .carousel.carousel-fit .carousel-inner > .item {
   text-align: center;
+}
+.carousel-inner {
+  width: 200%;
+}
+.carousel-inner > .item {
+  width: 50%; float: left;
+}
+.carousel-inner.prev {
+  left: -100%;
+}
+.carousel-inner.move {
+  -webkit-transition: .6s ease-in-out margin-left;
+  -o-transition: .6s ease-in-out margin-left;
+  transition: .6s ease-in-out margin-left;
+}
+.carousel-inner > .item.active,
+.carousel-inner > .item.out {
+  display: block;
+}
+.carousel-inner.move.right {
+  margin-left: 100%;
+}
+.carousel-inner.move.left {
+  margin-left: -100%;
+}
+.carousel-inner.move.cycle > .item {
+  float: right;
 }
 .carousel.carousel-fit .carousel-inner > .item > img {
   display: inline-block;
@@ -30,23 +52,10 @@
 .modal-header .btn .glyphicon {
   margin-right: 4px; top: 3px; font-size: 1.1em;
 }
-.modal.modal-fullscreen {
-  /* Maximize the main wrappers on the screen */
-  /* Make the parent wrapper of the modal box a full-width block */
-  /* Remove borders and effects on the content */
-  /**
-	 * /!\ By using this feature, you force the header and footer to be placed
-	 * in an absolute position. You must handle by yourself the margin of the
-	 * content.
-	 */
-}
 .modal.modal-fullscreen .modal-dialog,
 .modal.modal-fullscreen .modal-content {
-  bottom: 0;
-  left: 0;
+  top: 0; bottom: 0; left: 0; right: 0;
   position: absolute;
-  right: 0;
-  top: 0;
 }
 .modal.modal-fullscreen .modal-dialog {
   margin: 0;
@@ -61,9 +70,6 @@
   -o-box-shadow: inherit;
   box-shadow: inherit;
   background: rgba(0, 0, 0, .5);
-}
-.modal.modal-fullscreen.force-fullscreen {
-  /* Remove the padding inside the body */
 }
 .modal.modal-fullscreen.force-fullscreen .modal-body {
   padding: 0;

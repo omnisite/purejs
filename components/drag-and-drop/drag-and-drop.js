@@ -77,11 +77,7 @@ define(function() {
 						return area.matches(selector) ? area
 							: (evt.target.closest(selector) || area.querySelector(selector)); 
 					},
-					show: function(info) {
-						//console.log(info, this._move ? this._move.state : 'no-move-no-state');
-					},
 					make: function(evt) {
-						this.show('<begin-make>');
 						var area = evt.currentTarget || evt.target;
 						var root = this.root(), move, view = root.view();
 						if (!this._move) {
@@ -94,28 +90,23 @@ define(function() {
 							move.toggle       = this.toggle('dragging');
 						}
 						this._move.state = 'make';
-						this.show('<end-make>');
 						return this._move;
 					},
 					init: function(evt) {
-						this.show('<begin-init>');
 						if (!this._move) {
 							this._move = this.make(evt);
 						}
 						this._move.state = 'init';
-						this.show('<end-init>');
+						return this._move;
 					},
 					start: function(evt) {
-						this.show('<begin-start>');
 						if (!this._move) {
 							this._move = this.init(evt);
 							this._move.state = 'starting';
 						}else if (this._move.state != 'init') {
-							this.show('<fake-start>');
 							this._move.state = 'stopped';
 						}else {
 							var root = this.root(), view = root.view();
-							this.show('<add-move-from-start>');
 							var move = this._move = view.body(this._move);
 							var area = evt.currentTarget || evt.target;
 							var elem = this.elem(area, evt, this._move.draggable);
@@ -126,10 +117,8 @@ define(function() {
 								move.toggle.run();
 							}
 						}
-						this.show('<end-start>');
 					},
 					move: function(evt) {
-						this.show('<begin-move>');
 						if (this._move) {
 							var elem = document.querySelector(this._move.selector);
 							if (elem) {
@@ -138,7 +127,6 @@ define(function() {
 								elem.style.top   = (evt.y - 10) +'px';
 							}
 						}
-						this.show('<end-move>');
 					},
 					cancel: function(evt) {
 						if (this._move) {
@@ -146,7 +134,6 @@ define(function() {
 						}
 					},
 					stop: function(evt) {
-						this.show('<begin-stop>');
 						if (this._move) {
 							this._move.state = 'stopping';
 							var elem = document.querySelector(this._move.selector);
@@ -161,7 +148,6 @@ define(function() {
 							}
 							this._move.state = 'stopped';
 						}
-						this.show('<end-stop>');
 					},
 					drag: function(elem, evt) {
 

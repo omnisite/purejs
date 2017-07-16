@@ -8,6 +8,10 @@
 	        klass: function Worker(opts) {
 	        	this.$super.call(this, opts);
 	        	this._worker = this.worker();
+
+	        	this._events = (this.parent('events') || sys.get('events')).child({ name: 'events', parent: this });
+	        	this.ctor.prop('dispatcher', this.listener.run(this));
+
 	        	this.observe('change', 'result', this.result.bind(this));
 	        },
 	        ext: [
@@ -126,12 +130,9 @@
 	        init: function(type, klass, sys) {
 	            //if (!sys.get('config.worker')) return;
 	            klass.prop('tid', this.makeID('task'));
-	            //klass.prop('_parse', true);
-	            var lstr = sys.klass('Listener').$ctor;
+				var lstr = sys.klass('Listener').$ctor;
+				klass.prop('listener', lstr.init('workers', 'store'));
 	            var node = sys.root.child('workers');
-	            node._events = node.child('events', sys.klass('Events').$ctor);
-	            klass.prop('listener', lstr.init('workers', 'store'));
-	            klass.prop('dispatcher', klass.prop('listener').run(node));
 	        }
 	    };
 	};
@@ -205,8 +206,7 @@
 					var type = sys.klass('Node').parse(klass());
 					var wrkr = sys.get().child('workers').child('main', type.$ctor);
 					sys.get('async').set('request', wrkr.xhr.bind(wrkr));
-					wrkr.start();
-					k(wrkr);
+					wrkr.start(); k(wrkr);
 				}
 		    }).attr('name', 'core.worker');
 

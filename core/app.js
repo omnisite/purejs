@@ -317,114 +317,8 @@
                     });
                 }
             }),
-            (function makeBind() {
-                return [].slice.call(arguments).apply();
-            })(
-                (function(bind, make, wrap) {
-                    return function $_makeBind($_roll, $_makeInstruction, $_bindLazy, $_lazyValue, $_pure, $_mapLazy) {
-                        return bind(make, wrap, {
-                            roll: $_roll, makeInstruction: $_makeInstruction,
-                            bindLazy: $_bindLazy, lazyValue: $_lazyValue, pure: $_pure, mapLazy: $_mapLazy
-                        });
-                    }
-                }),
-                (function bind(make, wrap, func) {
-                    return function makeBind(f, x) {
-                        return wrap.call(func, make(func), f, x || {});
-                    }
-                }),
-                (function make(x) {
-                    return {
-                        next: function(v) {
-                            return x.roll(x.makeInstruction('yield', [ this.run(v) ]));
-                        },
-                        bind: function(v, f) {
-                            return x.roll(x.makeInstruction('yield', [ x.bindLazy(x.lazyValue(v), f) ]));
-                        },
-                        then: function(v) {
-                            return this.run(v);
-                        },
-                        done: function(v) {
-                            return x.pure(v);
-                        }
-                    };
-                }),
-                (function wrap(b, f, x) {
-                    b.data = this.lazyValue(x);
-                    return (b.run = this.mapLazy(f.bind(b)));
-                })
-            ),
-        // === ARR THREAD
-            (function makeArr(x, f, k) {
-                return function() {
-                    if (x.i < x.arr.length) {
-                        x.res[x.i] = f(x.arr[x.i], x.i++, x.arr);
-                        if (k && x.i == x.arr.length) {
-                            x.res = k(x.res);
-                        }
-                    }
-                    return x.i < x.arr.length ? x.next : x.pure;
-                }
-            }),
-            (function $_arrThread($_makeArr, $_makeInstruction, $_lazyValue) {
-                return function arrThread(f, k, m) {
-                    return function(arr) {
-                        var x  = { arr: arr, i: 0, res: arr.map($_lazyValue()) };
-                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeArr(x, f, k) ]) };
-                        x.pure = { pure: true,  value: x.res };
-                        return $_lazyValue(x.next);
-                    }
-                }
-            }),
-        // === QUEUE THREAD
-            (function makeQueue(x, f, k) {
-                return function() {
-                    if (x.arr.length) {
-                        if (f(x.arr[(x.i<x.arr.length?x.i:(x.i=0))], x.item++, x.run++) && !(x.item = 0))
-                            if (x.i) x.arr.splice(x.i, 1);
-                            else x.arr.shift();
-                        else
-                            x.i++;
-                        if (k && !x.arr.length) k(x);
-                    }
-                    return x.arr.length ? x.cont : x.pure;
-                }
-            }),
-            (function $_queueThread($_makeQueue, $_makeInstruction, $_lazyValue) {
-                return function queueThread(f, k, m) {
-                    return function(arr) {
-                        var x  = { arr: arr, i: 0, item: 0, run: 0 };
-                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeQueue(x, f, k) ]) };
-                        x.cont = { pure: false, cont: true };
-                        x.pure = { pure: true,  value: x };
-                        return $_lazyValue(x.next);
-                    }
-                }
-            }),
-        // === LIST THREAD
-            (function makeList(x, f, k) {
-                return function() {
-                    if (x.arr.length) {
-                        if ((x.arr = x.arr.filter(function(v, i) {
-                            return !f(v);
-                        })) && k && !x.arr.length) k(x);
-                    }
-                    return x.arr.length ? x.cont : x.pure;
-                }
-            }),
-            (function $_listThread($_makeList, $_makeInstruction, $_lazyValue) {
-                return function listThread(f, k, m) {
-                    return function(arr) {
-                        var x  = { arr: arr.splice(0), i: 0, item: 0, run: 0 };
-                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeList(x, f, k) ]) };
-                        x.cont = { pure: false, cont: true };
-                        x.pure = { pure: true,  value: x.arr.slice(0) };
-                        return $_lazyValue(x.next);
-                    }
-                }
-            }),
-        // === RUN, YIELD, DONE
 
+        // === RUN, YIELD, DONE
             (function $_yyield($liftF, $_makeInstruction) {
                 return function yyield() {
                   return $_liftF($_makeInstruction('yield', [null]));
@@ -481,7 +375,123 @@
                         }
                     }
                 })
-            )
+            ),
+
+            (function makeBind() {
+                return [].slice.call(arguments).apply();
+            })(
+                (function(bind, make, wrap, suspend) {
+                    return function $_makeBind($_roll, $_makeInstruction, $_bindLazy, $_lazyValue, $_pure, $_mapLazy, $_runThreads) {
+                        return bind(make, wrap, {
+                            roll: $_roll, makeInstruction: $_makeInstruction, suspend: suspend,
+                            bindLazy: $_bindLazy, lazyValue: $_lazyValue, pure: $_pure, mapLazy: $_mapLazy
+                        });
+                    }
+                }),
+                (function bind(make, wrap, func) {
+                    return function makeBind(f, x, t) {
+                        return wrap.call(func, make(func), f, x || {}, t);
+                    }
+                }),
+                (function make(x) {
+                    return {
+                        next: function(v) {
+                            return x.roll(x.makeInstruction('yield', [ this.run(v) ]));
+                        },
+                        bind: function(v, f) {
+                            return x.roll(x.makeInstruction('yield', [ x.bindLazy(x.lazyValue(v), f) ]));
+                        },
+                        then: function(v) {
+                            return this.run(v);
+                        },
+                        done: function(v) {
+                            return x.pure(v);
+                        }
+                    };
+                }),
+                (function wrap(b, f, x, t) {
+                    b.data = this.lazyValue(x);
+                    b.run  = this.mapLazy(f.bind(b));
+                    if (t) b.susp = this.suspend(t);
+                    return b.run;
+                }),
+                (function suspend(t) {
+                    return function(v) {
+                        return this.done(t.of(this.run(v)));
+                    }
+                })
+            ),
+        // === ARR THREAD
+            (function makeArr(x, f, k) {
+                return function() {
+                    if (x.i < x.arr.length) {
+                        x.res[x.i] = f(x.arr[x.i], x.i++, x.arr);
+                        if (k && x.i == x.arr.length) {
+                            x.res = k(x.res);
+                        }
+                    }
+                    return x.i < x.arr.length ? x.next : x.pure;
+                }
+            }),
+            (function $_arrThread($_makeArr, $_makeInstruction, $_lazyValue) {
+                return function arrThread(f, k, m) {
+                    return function(arr) {
+                        var x  = { arr: arr, i: 0, res: arr.map($_lazyValue()) };
+                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeArr(x, f, k) ]) };
+                        x.pure = { pure: true,  value: x.res };
+                        return $_lazyValue(x.next);
+                    }
+                }
+            }),
+
+        // === QUEUE THREAD
+            (function makeQueue(x, f, k) {
+                return function() {
+                    if (x.arr.length) {
+                        if (f(x.arr[(x.i<x.arr.length?x.i:(x.i=0))], x.item++, x.run++) && !(x.item = 0))
+                            if (x.i) x.arr.splice(x.i, 1);
+                            else x.arr.shift();
+                        else
+                            x.i++;
+                        if (k && !x.arr.length) k(x);
+                    }
+                    return x.arr.length ? x.cont : x.pure;
+                }
+            }),
+            (function $_queueThread($_makeQueue, $_makeInstruction, $_lazyValue) {
+                return function queueThread(f, k, m) {
+                    return function(arr) {
+                        var x  = { arr: arr, i: 0, item: 0, run: 0 };
+                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeQueue(x, f, k) ]) };
+                        x.cont = { pure: false, cont: true };
+                        x.pure = { pure: true,  value: x };
+                        return $_lazyValue(x.next);
+                    }
+                }
+            }),
+
+        // === LIST THREAD
+            (function makeList(x, f, k) {
+                return function() {
+                    if (x.arr.length) {
+                        if ((x.arr = x.arr.filter(function(v, i) {
+                            return !f(v);
+                        })) && k && !x.arr.length) k(x);
+                    }
+                    return x.arr.length ? x.cont : x.pure;
+                }
+            }),
+            (function $_listThread($_makeList, $_makeInstruction, $_lazyValue) {
+                return function listThread(f, k, m) {
+                    return function(arr) {
+                        var x  = { arr: arr.splice(0), i: 0, item: 0, run: 0 };
+                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeList(x, f, k) ]) };
+                        x.cont = { pure: false, cont: true };
+                        x.pure = { pure: true,  value: x.arr.slice(0) };
+                        return $_lazyValue(x.next);
+                    }
+                }
+            })
     ),
 
     (function MakeAsync() {
@@ -604,285 +614,18 @@
 
         return [].slice.call(arguments);
     })(
-        // === Link === //
-            (function() {
-                return {
-                    parent: 'Store',
-                    klass: function Link(ref, name) {
-                        this.$super.call(this, ref, name || 'link');
-                    },
-                    ext: [
-                        (function cid() {
-                            return this._cid;
-                        }),
-                        (function mode(mode) {
-                            return this.get(this.set('mode', mode)) || this.child(mode);
-                        }),
-                        (function use(arg) {
-                            var args = arg instanceof Array ? arg : [].slice.call(arguments);
-                            var key  = this.set('key', typeof args[0] == 'string' ? args.shift() : 'vals');
-                            return this.get(key) || this.node(key);
-                        }),
-                        (function pick(key) {
-                            return this.use(key).ref();
-                        }),
-                        (function add() {
-                            var args = [].slice.call(arguments);
-                            var rec  = this.use(args);
-                            rec.push(this.data.get(this.cid()).apply(this, args));
-                            return this;
-                        }),
-                        (function run() {
-                            var args = [].slice.call(arguments), rec;
-                            if (args.length > 1 && typeof args[0] == 'string'
-                                && this.has(args[0]) && this.is(this.get(args[0])))
-                                    this.pick(args);
-                            return this.ops.get(this.cid()).apply(this.current(), args);
-                        })
-                    ],
-                    link: function(mode) {
-                        var link = this._link || (this._link = this.$link(this, mode));
-                        return mode ? link.mode(mode) : link;
-                    },
-                    haslink: function() {
-                        return this._link;
-                    },
-                    ops: function() {
-                        this.set('mapF', function(value) {
-                            var rec = this.current() || [], idx = 0, key = this._cid, val = this.initial(key);
-                            while (idx < rec.length) {
-                                if (rec[idx].filter(value)) break;
-                            }
-                            return val instanceof Function
-                                ? (idx < rec.length ? val(rec[idx].map(value)) : val(value))
-                                : (idx < rec.length ? rec[idx].map(val || value) : (val || value));
-                        });
-                        this.set('valueMap', function(value) {
-                            var rec = this.current().first();
-                            return this.initial(rec.map.get(value || rec.def) || rec.map.get(rec.def) || rec.def);
-                        });
-                        this.set('typeMap', function(value) {
-                            var rec = this.current().first();
-                            return rec.map.get(this.initial(value || rec.def) || this.initial(rec.def) || rec.def);
-                        });
-                        return this;
-                    },
-                    data: function() {
-                        this.set('mapF', function(map, filter) {
-                            return { filter: filter || (function() { return true; }), map: map || unit };
-                        });
-                        this.set('filterM', function(filter, map) {
-                            return { filter: filter || (function() { return true; }), map: map || unit };
-                        });
-                        this.set('valueMap', function(map, def) {
-                            var rec = this.get(this.get('key'));
-                            return { map: rec.node('map').parse(map, true), def: def };
-                        });
-                        this.set('typeMap', function(map, def) {
-                            var rec = this.get(this.get('key'));
-                            return { map: rec.node('map').parse(map, true), def: def };
-                        });
-                        return this;
-                    },
-                    idx: function() {
-                        this.child('store');
-                        this.child('mapF');
-                        this.child('filterM');
-                        this.child('valueMap');
-                        this.child('typeMap');
-                        this.child('other');
-                        return this;
-                    },
-                    child: function($child, $maintype, $store) {
-                        return function(name, ctor, ref) {
-                            if ($maintype.test(name)) {
-                                return $store.set(''+this.uid(), this.set(name, $child.call(this, name, ctor, ref)));
-                                //return this.set(name, this.idx.get(name));// || this.idx.$child.call(this, name, ctor, ref);
-                            }else if ($maintype.test(this._cid)) {
-                                var link = this.idx.get(this._cid) || this.idx.get('other');
-                                var inst = link.get(name) || link.set(name, $child.call(this, name, ctor, ref));
-                                return this.set(name, inst);
-                            }else {
-                                return $child.call(this, name, ctor, ref);
-                            }
-                        }
-                    },
-                    $$of: function($ctor, $idx, $store) {
-                        return function $$of(ref, name) {
-                            if (ref instanceof $ctor) {
-                                return $store.get(''+ref.uid()) || $store.set(''+ref.uid(), new this(ref, ref.cid()));
-                            }else {
-                                debugger;
-                                return new this(ref, name);
-                            }
-                        }
-                    },
-                    attrs: [
-                        (function of(ref, name) {
-                            return this.$$of(ref, name);
-                        })
-                    ],
-                    init: function(type, klass, sys) {
-                        var $store = klass.$store.ctor;
-                        $store.prop('$link', klass.of);
-                        $store.prop('link', type.link);
-                        $store.prop('haslink', type.haslink);
-                        var link = klass.prop('root').child('link', klass.$ctor).store();
-                        klass.prop('data',  type.data.call(link.child('data')));
-                        klass.prop('ops',   type.ops.call(link.child('ops')));
-                        var $idx = klass.prop('idx', type.idx.call(link.child('idx')));
-                        var $str = $idx.get('store');
-                        klass.prop('child', type.child($store.prop('child'), new RegExp(/(mapF|filterM|valueMap|typeMap)/), $str));
-                        klass.$ctor.$$of = type.$$of($store.$ctor, $idx, $str);
-                    }
-                };
-            }),
-        // === Coyoneda === //
-            (function Coyoneda() {
-                return {
-                    parent: 'Compose',
-                    klass: function Coyoneda(f, x) {
-                        this.$super.call(this, f, x);
-                    },
-                    ext: [
-                        (function $$init(f, x) {
-                            if (f) this.mf = f;
-                            else if (!this.mf) this.mf = unit;
-                            if (x) this.mv = x;
-                        }),
-                        (function map(f) {
-                            return new this.constructor(this.$fn(this.mf)(f), this.mv);
-                        }),
-                        (function bind(f) {
-                            return new this.constructor(this.$fn(this.mf)(f), this.mv);
-                        }),
-                        (function chain(f, x) {
-                            return this.$fn(this.mf)(f || unit)(x || this.mv);
-                        }),
-                        (function lift(x) {
-                            return new this.constructor(this.mf, x || this.mv);
-                        }),
-                        (function run(f, x) {
-                            return this.$fn(this.mf)(f || unit)(x || this.mv);
-                        })
-                    ],
-                    attrs: [
-                        (function of(x, f) {
-                            return new this(f || unit, x);
-                        }),
-                        (function lift(f, x) {
-                            if (!(f instanceof Function)) return this.of(f, x);
-                            return new this(f || unit, x);
-                        }),
-                        (function $of() {
-                            var ctor = this;
-                            return function() {
-                                return ctor.of.apply(ctor, arguments);
-                            }
-                        })
-                    ]
-                };
-            }),        
-        // === Value === //
-            (function() {
-                return {
-                    klass: function Value(x, l) {
-                        this.id = this.id();
-                        if (x) this.mv = x;
-                        this.mv._locked = l !== false;
-                    },
-                    ext: [
-                        (function of(v, l) {
-                            return this.constructor.of(v, l);
-                        }),
-                        (function lock(lock) {
-                            if (!this._locked && lock !== false) this._locked = true;
-                            return this;
-                        }),
-                        (function unlock() {
-                            if (this.isLocked(this.mv)) this.mv._locked = false;
-                            else if (this.isLocked()) this._locked = false;
-                            return this.mv;
-                        }),
-                        (function isLocked(v) {
-                            return v ? this.__.isLocked(v) : (this._locked === true || this.__.isLocked(this.mv));
-                        }),
-                        (function wasLocked(v) {
-                            return v ? this.__.wasLocked(v) : (this._locked === false || this.__.wasLocked(this.mv));
-                        }),
-                        (function holdLock(v) {
-                            return this.of(v, this._locked !== false);
-                        }),
-                        (function releaseLock() {
-                            return this.of(this.unlock(), false);
-                        }),
-                        (function map(f) {
-                            return this.of(this.mv.map(f), false);
-                        }),
-                        (function bind(f) {
-                            return this.mv && !this.isLocked(this.mv) ? this.unlock().bind(f) : this.of(this.mv.bind(f), false);
-                        }),
-                        (function resolve(f) {
-                            return this.mv && !this.isLocked(this.mv) ? this.unlock().resolve(f) : this.of(this.mv.resolve(f), false);
-                        }),
-                        (function create(opts) {
-                            return this.mv.bind(function(v) {
-                                return function $_pure(k) {
-                                    v.create(opts).run(k);
-                                }
-                            });
-                        }),
-                        (function run(k) {
-                            return this.mv && !this.isLocked(this.mv) ? this.mv.run(k) : k(this);
-                        })
-                    ],
-                    isLocked: function() {
-                        function isLocked(x) {
-                            return x && x._locked;
-                        }
-                        return isLocked;
-                    },
-                    wasLocked: function() {
-                        function wasLocked(x) {
-                            return x && x._locked === false;
-                        }
-                        return wasLocked;
-                    },
-                    unlock: function(isLocked) {
-                        function unlock(v) {
-                            if (isLocked(v) && !(v._locked = false)) return v;
-                            return v;
-                        }   
-                        return unlock;
-                    },
-                    attrs: [
-                        (function of(v, l) {
-                            return new this(v, l);
-                        })
-                    ],
-                    value: function(v) {
-                        return function() {
-                            return v.of(this instanceof v.$ctor ? this.mv : this);
-                        }
-                    },
-                    init: function(type, klass, sys) {
-                        klass.$ctor.isLocked  = type.isLocked(klass);
-                        klass.$ctor.wasLocked = type.wasLocked(klass);
-                        klass.$ctor.unlock    = type.unlock(klass.$ctor.isLocked);
-
-                        this.find('Cont').prop('$value', type.value(klass));
-                    }
-                };
-            }),
         // === IO === //
             (function IO() {
                 return {
                     parent: 'Functor',
                     klass: function IO(x) {
-                        this._id = this.id();
-                        this.unsafePerformIO = x;
+                        this.$$init(x);
                     },
                     ext: [
+                        (function $$init(x) {
+                            this.id = this.id();
+                            this.unsafePerformIO = x;
+                        }),
                         (function fx(f) {
                             return new this.constructor(f);
                         }),
@@ -970,258 +713,174 @@
                                 }).pure();
                             }).pure();
                         })
-                    )
+                    ),
+                    findType: function(type, name) {
+                        return type.find(name);
+                    },
+                    init: function(type, klass, sys) {
+                        this.root().prop('$find', klass.pure(this.root).lift(type.findType));
+                    }
                 };
             }),
-        // === Maybe === //
-            (function Maybe() {
+        // === Obj === //
+            (function() {
                 return {
-                    parent: 'Functor',
-                    klass: function Maybe(x, a) {
-                        this.id = this.id();
-                        if (x || typeof x != 'undefined')
-                            this._x = !a && x instanceof Function && x.length > 1 ? this.fn.curry(x) : x;
+                    klass: function Obj(x, r, p) {
+                        if (!(this instanceof Obj)) return new Obj(x, r);
+                        this._root   = this.konst(r || this);
+                        this._parent = p ? this.konst(p) : this._root;
+                        Object.assign(this, this.reduce(unit, x));
                     },
                     ext: [
-                        (function prop() {
-                            var args = Array.prototype.slice.call(arguments);
-                            return this.map(this.property(args.shift()).apply(undefined, args));
+                        (function of(v) {
+                            return new this.constructor(v, this.root(), this);
                         }),
-                        (function get(key) {
-                            return this.map(this.pget(key));
-                        }),
-                        (function values(recur) {
-                            return this.map(this.pval(recur));
-                        }),
-                        (function $isNothing(v) {
-                            return v === null || v === undefined || v === false;
-                        }),
-                        (function isNothing() {
-                            return this._x === null || this._x === undefined || this._x === false;
-                        }),
-                        (function ifSome(mf) {
-                            return this.isNothing() || !mf || !(mf instanceof Function) ? null : mf.call(this, this._x);
-                        }),
-                        (function filter(f) {
-                            return this.map(function(v) {
-                                if (f(v)) return v;
-                            });
-                        }),
-                        (function chain(f) {
-                            if (f instanceof Function) {
-                                return this.ifSome(f || unit);
-                            }else if (this._x instanceof Function) {
-                                return this.ifSome(this.fn.pure(f));
-                            }else {
-                                return this.ifSome(f);
+                        (function konst(v) {
+                            return function() {
+                                return v;
                             }
                         }),
-                        (function orElse(mv) {
-                            return this.isNothing() ? new this.constructor(mv instanceof Function ? mv() : mv) : this;
+                        (function isBase(v) {
+                            return (v || (v = this)).constructor === Function;
                         }),
-                        (function map(mf) {
-                            return new this.constructor(this.chain(mf), true);
+                        (function map(f) {
+                            return this.keys().map(f);
                         }),
-                        (function run(f) {
-                            return this.chain(f || unit);
+                        (function keys() {
+                            return Object.keys(this).filter(function(v, i, o) {
+                                return v.substr(0, 1) != '_';
+                            });
                         }),
-                        (function ap(other) {
-                            return this.is(other) ? this.map(function(f) {
-                                return other.chain(f);
-                            }) : this.of(other).map(this._x);
+                        (function values() {
+                            return this.keys().reduce(function(r, k, i, a) {
+                                r.v.push(r.o[k]);
+                                return ++i < a.length ? r : r.v;
+                            }, { v: [], o: this });
                         }),
-                        (function apply(other) {
-                            return other.ap(this);
+                        (function object() {
+                            return this.keys().reduce(function(r, k, i, a) {
+                                r.v[k] = r.o[k];
+                                return ++i < a.length ? r : r.v;
+                            }, { v: {}, o: this });
                         }),
-                        (function unit() {
-                            return this._x;
+                        (function get(key) {
+                            return this[key];
                         }),
-                        (function join() {
-                            return this._x;
+                        (function set(key, value) {
+                            return this[key] = value;
+                        }),
+                        (function call() {
+                            var args = [].slice.call(arguments);
+                            if (args.length && args.unshift('fn')) return this.path.call(this._root(), args.join('.'));
+                            return this._root();
+                        }),
+                        (function root(path) {
+                            return path ? this.path.call(this._root(), path) : this._root();
+                        }),
+                        (function parentt(path) {
+                            return path ? this.path.call(this._parent(), path) : this._parent();
+                        }),
+                        (function extend(v, u) {
+                            Object.assign(this, this.reduce(unit, v, u || false));
+                            return this;
+                        }),
+                        (function update(v) {
+                            Object.assign(this, this.reduce(unit, v, true));
+                            return this;
+                        }),
+                        (function reduce(f, v, u) {
+                            return this.keys.call(v).reduce(function(r, k, i, o) {
+                                var x = f(v[k], k, i, o);
+                                if (r[k] && r.is(r[k])) {
+                                    r[k].extend(x, u);
+                                }else if (u && r[k]) {
+                                    // update so no overwrites
+                                }else {
+                                    r[k] = x instanceof Array
+                                        ? x : (r.isObject(x) ? r.of(x) : x);
+                                }
+                                return r;
+                            }, this);
+                        }),
+                        (function bind(b, m) {
+                            return function bind(f, r) {
+                                return b(f, this, m)(r || this.of({}), this, 0);
+                            }
+                        })(
+                            (function(f, o, m) {
+                                return function $bind(x, r, l) {
+                                    return o.keys.call(r).bind(function(k, i) {
+                                        var v = f(x, r[k], k, i, r, l);
+                                        return v instanceof Array
+                                            ? v.bind(m(f, (x[k] = {}), i, r[k], l+1, x))
+                                                : (o.isObject(v) ? $bind((x[k] = o.of({})), v, l+1) : v);
+                                    });//.bind(unit);
+                                }
+                            }),
+                            (function(f, x, t, j, l, o) {
+                                return function(r, v, k, i) {
+                                    return f(x, r, v, t, j, l, o);
+                                }
+                            })
+                        ),
+                        (function fold(b, m) {
+                            return function fold(f, r) {
+                                return b(f, this, m)(r || this.of({}), this, 0);
+                            }
+                        })(
+                            (function(f, o, m) {
+                                return function $fold(x, r, l) {
+                                    return o.keys.call(r).map(function(k, i, o) {
+                                        var v = f(x, r[k], k, i, r, l);
+                                        return v instanceof Array ? v.map(m(f, (x[k] = {}), i, r[k], l+1, x))
+                                            : (r.isObject(v) ? $fold((x[k] = r.of({})), v, l+1) : v);
+                                    });                                    
+                                }
+                            }),
+                            (function(f, x, t, j, l, o) {
+                                return function(r, v, k, i) {
+                                    return f(x, r, v, t, j, l, o);
+                                }
+                            })
+                        ),
+                        (function is(x) {
+                            return x instanceof this.__;//x instanceof Array || typeof x != 'object' ? false : true;
+                        }),
+                        (function isObject(x) {
+                            return x && typeof x == 'object' && (x.constructor == Object || x instanceof this.__) ? true : false;
+                        }),
+                        (function info(/* recur, opts */) {
+                            var args  = [].slice.call(arguments);
+                            var recur = (args.length && typeof args[0] == 'boolean' ? args.shift() :
+                                        (args.length && typeof args[args.length-1] == 'boolean' ? args.pop() : false));
+                            var bind  = this.bind(function(r, v, k, i, o) {
+                                if (o.is(v)) {
+                                    console.log([ k ].append(v.values()));
+                                }else {
+                                    console.log([ k, v, i ]);
+                                }
+                                return v;
+                            }, args.length && typeof args[0] == 'object' ? args.shift() : null);
+                            return bind;//recur ? bind.bind(unit) : bind;
                         })
                     ],
                     attrs: [
-                        (function of(x) {
-                            return x && x instanceof this ? x : new this(x);
+                        (function of(x, r) {
+                            return x instanceof this ? x : new this(x, r);
                         }),
-                        (function pure(x) {
-                            return new this(x, true);
+                        (function $of() {
+                            var ctor = this;
+                            return function() {
+                                return ctor.of.apply(ctor, arguments);
+                            }
                         })
                     ],
-                    toIO: function($iopure) {
-                        return function() {
-                            return this.chain($iopure);
-                        }
-                    },
-                    toMaybeIO: function($iof) {
-                        return function() {
-                            return $iof(this).lift(function(mbfn, value) {
-                                return mbfn.chain(function(fn) {
-                                    return this.of(value).chain(fn);
-                                });
-                            });
-                        }
-                    },
-                    toMaybe: function($maybe) {
-                        return function() {
-                            return this.map($maybe.of);
-                        }
-                    },
-                    runMaybe: function($maybe) {
-                        return function(v) {
-                            return $maybe.of(this.run(v));
-                        }
-                    },
                     init: function(type, klass, sys) {
-                        var root = this.$store.root, utils = root.get('utils');
-                        var property = klass.prop('property', utils.get('property'));
-                        klass.prop('pget', property('get'));
-                        klass.prop('pval', property('values'));
-                        klass.prop('curry', utils.get('curry'));
-                        var IO = this.find('IO');
-                        klass.prop('toIO',  type.toIO(IO.pure));
-                        klass.prop('toMaybeIO', type.toMaybeIO(IO.of));
-                        IO.prop('toMaybe',  type.toMaybe(klass));
-                        IO.prop('runMaybe', type.runMaybe(klass));
+                        klass.prop('path', sys.root.get('utils.path'));
 
-                        this.root().base.prototype.maybe = klass.of;
                     }
                 };
             }),
-        // === Thread === //
-            (function() {
-                return {
-                    klass: function Thread(f, t) {
-                        this._id = this.id();
-                        this._x  = f;
-                        this._t  = t || '$enqueue';
-                    },
-                    ext: [
-                        (function of(f, x) {
-                            return new this.constructor(f, x);
-                        }),
-                        (function map(f) {
-                            return new this.constructor(this.$fn('mapThread')(this._x, f), this._t);
-                        }),
-                        (function bind(f, x) {
-                            return new this.constructor(this.$fn('bindThread')(this._x, this.$fn('makeBind')(f, x)), this._t);
-                        }),
-                        (function run(f) {
-                            this[this._t].enqueue(f ? this.$fn('mapThread')(this._x, f) : this._x);
-                        }),
-                        (function info() {
-                            return this[this._t];
-                        })
-                    ],
-                    $ext: function() {
-                        return [
-                            { name: '$fn', value: this.get(this.threads)('path') },
-                            { name: '$proc', value: this.process },
-                            { name: '$next', value: this.enqueue },
-                            { name: '$make', value: this.get('addThreads') },
-                            { name: '$enqueue', value: this.threads.set('enqueue', this.threads.get('addThreads')([], this.enqueue, '$enqueue')) },
-                            { name: '$anim', value: this.threads.set('anim',
-                                this.threads.get('addThreads')([], this.process.get('animFrame.enqueue'), '$anim'))
-                            }
-                        ];
-                    },
-                    attrs: (function() {
-                        return [].slice.call(arguments).apply();
-                    })(
-                        (function(t, p, of, arr, que, lst, wrap, raf) {
-                            var parse = p(t);
-                            var bindL = t.get('bindLazy');
-                            var lazyV = t.get('lazyValue');
-                            return [
-                                parse,
-                                of(parse),
-                                arr(bindL, lazyV, t.get('arrThread')),
-                                que(bindL, lazyV, t.get('queueThread'), wrap),
-                                lst(bindL, lazyV, t.get('listThread'), wrap),
-                                raf
-                            ];
-                        }),
-                        this.load('loc').run('threads'),
-                        (function(cmd) {
-                            return function parse(v) {
-                                if (v instanceof Function) {
-                                    return v;
-                                }else {
-                                    return cmd.get('lazyValue')(v);
-                                }
-                            }
-                        }),
-                        (function(parse) {
-                            return function of(v) {
-                                return new this(parse(v));
-                            }
-                        }),
-                        (function(bindLazy, lazyValue, arrThread) {
-                            return function arr(a, f, k, m) {
-                                return new this(bindLazy(lazyValue(a), arrThread(f, k, m)));
-                            }
-                        }),
-                        (function(bindLazy, lazyValue, queThread, wrapThread) {
-                            return function queue(a, f, k, t, m) {
-                                //return wrapThread(a, new this(bindLazy(lazyValue(a), queThread(f, k, m)), t));
-                                return wrapThread(a, new this(queThread(f, k, m)(a), t));
-                            }
-                        }),
-                        (function(bindLazy, lazyValue, listThread, wrapThread) {
-                            return function list(a, f, k, t, m) {
-                                return wrapThread(a, new this(bindLazy(lazyValue(a), listThread(f, k, m)), t));
-                            }
-                        }),
-                        (function(wrap) {
-                            return function(arr, thread) {
-                                return wrap(wrap, arr, thread);
-                            }
-                        })(
-                            (function(wrap, arr, thread) {
-                                return {
-                                    info: function() {
-                                        return arr;
-                                    },
-                                    bind: function(f, x) {
-                                        return wrap(wrap, arr, thread.bind(f, x));
-                                    },
-                                    push: function() {
-                                        if (!(arr.length * arr.push.apply(arr, arguments))) {
-                                            thread.run();
-                                        }
-                                        return this;
-                                    },
-                                    add: function() {
-                                        arr.push.apply(arr, arguments);
-                                        return this;
-                                    },
-                                    run: function(f) {
-                                        thread.run(f);
-                                        return this;
-                                    }
-                                };
-                            })
-                        ),
-                        (function raf(a, f, k) {
-                            return this.list(a, f, k, '$anim', 'suspend');
-                        })
-                    ),
-                    init: function(type, klass) {
-                        var store = klass.$store.root;
-                        type.$ext.call({
-                            get: store.get('utils.target'),
-                            threads: store.get('threads'),
-                            process: store.get('process'), enqueue: store.get('process.nextTick.enqueue')
-                        }).reduce(function(r, v) { r.prop(v.name, v.value); return r; }, klass);
-                    }
-                };
-            })
-    ),
-
-    (function MakeTypes2() {
-
-        return [].slice.call(arguments);
-    })(
         // === Bind === //
             (function() {
                 return {
@@ -1425,8 +1084,8 @@
                             });
                         }),
                         (function make(cnst, bind, run) {
-                            return function make(b, m) {
-                                return bind(run, b, m || unit);
+                            return function make(b, m, c) {
+                                return bind(run, b, m || unit, c || cnst);
                             }
                         })(
                             (function cnst(v) {
@@ -1442,7 +1101,7 @@
                             (function run(f, g, c) {
                                 return function(v, r) {
                                     r || (r = {});
-                                    return g(v).bind(f(r, v, 0)).chain(c(r));
+                                    return g.run(v).bind(f(r, v, 0)).chain(c(r));
                                 }
                             })
                         ),
@@ -1455,9 +1114,178 @@
                             return new this(f, g, m);
                         })
                     ],
+                    make: function(binds) {
+                        return binds.set('make', function(type) {
+                            return function(impl) {
+                                return binds.get('data', type)(binds.get('types', type).run(
+
+                                    typeof impl == 'string'
+                                        ? binds.get('impl', type, impl).apply(undefined, [].slice.call(arguments, 1))
+                                            : impl
+                                ));
+                            }
+                        });
+                    },
+                    binds: function() {
+                        return this.parse({
+                            types: {
+
+                                store: this.klass('Bind').pure(function(f, g, m) {
+
+                                    // f --> effect function
+                                    // g --> input adapter (optional)
+                                    // m --> level change assistant (optional)
+                                    return function $bind(x, r, l) {
+
+                                        return function $fn(v, i, o) {
+                                            var k = r && r.keys ? r.keys(i) : v.name;
+                                            if (r && r.is && r.is(v)) return v.vals().bind($bind(l ? (x instanceof Array ? (x[x.push({})-1][k] = []) : (x[k] = {})) : x, v, l+1));
+                                            else if (v instanceof Array) return v.bind($bind(l ? (x instanceof Array ? (x[x.push({})-1][k] = []) : (x[k] = {})) : x, v, l+1));
+                                            else return f(x, v, k, i, r || o) || v;
+                                        };
+
+                                    };
+
+                                }, this.ctor.$find.ap('Store').lift(function(node, value) {
+
+                                    return node.is(value) ? value.vals() : (value instanceof Array ? value : [ value ]);
+
+                                }), function(f, t, j, x, l) {
+
+                                    return function(v, i, o) {
+                                        return f(t, v, j, x, l);
+                                    }
+
+                                }),
+
+                                object: this.klass('Bind').pure(function(f, g, m) {
+
+                                    return function $bind(x, r, l) {
+
+                                        return function $fn(k, i, o) {
+                                            var v = f(x, r[k], k, i, r, l);
+                                            return v instanceof Array ? v.bind(m(f, (x[k] = {}), k, v, l+1))
+                                            : (typeof v == 'object' && v.constructor.name == 'Object' ? g(v).bind($bind((x[k] = {}), v, l+1)) : v);
+                                        };
+
+                                    };
+
+                                }, this.ctor.$find.ap('Obj').lift(function(node, value) {
+
+                                    return node.is(value) ? value.keys()
+                                        : (value instanceof Array ? value
+                                            : (typeof value == 'object' ? Object.keys(value) : [ value ]));
+
+                                }), function(f, t, j, x, l) {
+
+                                    return function(v, i, o) {
+                                        return f(t, v, j, x, l);
+                                    }
+
+                                })
+                            },
+                            impl: {
+
+                                store: {
+
+                                    fold: function(f) {
+                                        return function(r, v, k, i, o) {
+                                            if (f) {
+                                                r = f(r, v, k, i, o) || r;
+                                            }else if (r instanceof Array) {
+                                                if (v && v.name) {
+                                                    r.push(v);
+                                                }else {
+                                                    r[r.push({})-1][k] = v;
+                                                }
+                                            }else {
+                                                r[k] = v;
+                                            }
+                                            return v;
+                                        }
+                                    },
+
+                                    filter: function(expr) {
+                                        return function(r, v, k, i, o) {
+                                            if ((v && typeof v == 'string' && v.like(expr))
+                                              || (k && typeof k == 'string' && k.like(expr))
+                                                || (o && o.isStore && o.identifier && o.identifier().like(expr))) {
+                                                r[k] = v;
+                                            }
+                                            return v;
+                                        }
+                                    },
+
+                                    info: function() {
+                                        return function(r, v, k, i, o) {
+                                            r[k] = v;
+                                            console.log('Bind', o && o.is ? [ o.identifier(), k, v, i ] : [ v, o, i ]);
+                                            return v;
+                                        }
+                                    }
+                                },
+                                object: {
+
+                                    fold: function(f) {
+                                        return function(r, v, k, i, o) {
+                                            if (f) {
+                                                r = f(r, v, k, i, o) || r;
+                                            }else if (r instanceof Array) {
+                                                if (v && v.name) {
+                                                    r.push(v);
+                                                }else {
+                                                    r[r.push({})-1][k] = v;
+                                                }
+                                            }else {
+                                                r[k] = v;
+                                            }
+                                            return v;
+                                        }
+                                    },
+
+                                    info: function() {
+                                        return function(r, v, k, i, o) {
+                                            r[k] = v;
+                                            console.log(v, k, i);
+                                            return typeof v == 'string' ? ('!!' + v + '!!') : v;
+                                        }
+                                    }
+                                }
+                            },
+                            data: {
+
+                                store: function(bind) {
+
+                                    return function(path) {
+
+                                        return function(value) {
+
+                                            return bind(sys.get(path).store(), value);
+                                        };
+                                    };
+                                },
+                                path: function(bind) {
+
+                                    return function(path, value) {
+
+                                        return bind(sys.get(path).store(), value).bind(unit);
+
+                                    };
+                                },
+                                object: function(bind) {
+
+                                    return function(obj, value) {
+
+                                        return bind(obj, value || {});
+
+                                    };
+                                }
+                            }
+                        });
+                    },
                     init: (function(wrap, set, make, ext) {
                         return function(type, klass, sys) {
-                            return ext(make.call(set(wrap({
+                            return type.make(type.binds.call(sys.get().child('binds'), ext(make.call(set(wrap({
                                 klass: klass,
                                 scheduler: sys.get('process'),
                                 enqueue: sys.get('process.nextTick.enqueue'),
@@ -1465,7 +1293,7 @@
                                 aid: this.makeID('arr'),
                                 utils: sys.get('utils').select('call', 'call1', 'call2', 'andThen', 'pass', 'target', 'extend'),
                                 async: sys.get('async').select('pure', 'cast', 'make', 'select', 'get', 'next', 'combine', 'flatmap', 'fmap', 'wrap', 'then', 'lazy')
-                            }))));
+                            }))))));
                         };
                     })(
                         (function(ext) {
@@ -1531,9 +1359,11 @@
                             Array.prototype.run = function(/* k, o, f */) {
                                 var args = [].slice.call(arguments), k, o, f;
                                 while (args.length) {
-                                    if (args.length && typeof args[0] == 'object') o = args.shift();
-                                    else if (args.length && args[0] instanceof Function) {
+                                    if (typeof args[0] == 'object') o = args.shift();
+                                    else if (args[0] instanceof Function) {
                                         if (!k) k = args.shift(); if (!f) f = args.shift();
+                                    }else {
+                                        args.shift();
                                     }
                                 }
                                 o || (o = {}); o.aid || (o.aid = this.arrid());
@@ -1558,135 +1388,203 @@
                     )
                 };
             }),
-        // === Obj === //
+        // === Link === //
             (function() {
                 return {
-                    klass: function Obj(x, r, p) {
-                        if (!(this instanceof Obj)) return new Obj(x, r);
-                        this._root   = this.konst(r || this);
-                        this._parent = p ? this.konst(p) : this._root;
-                        Object.assign(this, this.reduce(unit, x));
+                    parent: 'Store',
+                    klass: function Link(ref, name) {
+                        this.$super.call(this, ref, name || 'link');
                     },
                     ext: [
-                        (function of(v) {
-                            return new this.constructor(v, this.root(), this);
+                        (function cid() {
+                            return this._cid;
                         }),
-                        (function konst(v) {
-                            return function() {
-                                return v;
+                        (function mode(mode) {
+                            return this.get(this.set('mode', mode)) || this.child(mode);
+                        }),
+                        (function use(arg) {
+                            var args = arg instanceof Array ? arg : [].slice.call(arguments);
+                            var key  = this.set('key', typeof args[0] == 'string' ? args.shift() : 'vals');
+                            return this.get(key) || this.node(key);
+                        }),
+                        (function pick(key) {
+                            return this.use(key).ref();
+                        }),
+                        (function add() {
+                            var args = [].slice.call(arguments);
+                            var rec  = this.use(args);
+                            rec.push(this.data.get(this.cid()).apply(this, args));
+                            return this;
+                        }),
+                        (function make(path, type, items) {
+                            var root  = sys.get();
+                            var parts = path.split('.');
+                            var name  = parts.pop();
+                            var store = parts.length ? (root.get(parts) || root.ensure(parts)).store() : root.child(name).store();
+                            if (items) store.parse(items);
+                            return store.link(type);
+                        }),
+                        (function run() {
+                            var args = [].slice.call(arguments), rec, path, link;
+                            if (typeof args[0] == 'string') {
+                                if (args[0].indexOf('.') > 0) {
+                                    path = args.shift().split('.');
+                                    link = this.idx.get(path.slice(0, -1).join('.'));
+                                    return link.run.apply(link, args.prepend(path.last()));
+                                }else if (this.has(args[0]) && this.is(this.get(args[0]))) {
+                                    this.pick(args);
+                                }else if (this.has('idx')) {
+                                    link = this.get('idx').get('valueMap');
+                                    return link.run.apply(link, args);
+                                }
                             }
-                        }),
-                        (function isBase(v) {
-                            return (v || (v = this)).constructor === Function;
+                            return this.ops.get(this.cid()).apply(this.current(), args);
+                        })
+                    ],
+                    link: function(mode) {
+                        var link = this._link || (this._link = this.$link(this, mode));
+                        return mode ? link.mode(mode) : link;
+                    },
+                    haslink: function() {
+                        return this._link;
+                    },
+                    ops: function() {
+                        this.set('mapF', function(value) {
+                            var rec = this.current() || [], idx = 0, key = this._cid, val = this.initial(key);
+                            while (idx < rec.length) {
+                                if (rec[idx].filter(value)) break;
+                            }
+                            return val instanceof Function
+                                ? (idx < rec.length ? val(rec[idx].map(value)) : val(value))
+                                : (idx < rec.length ? rec[idx].map(val || value) : (val || value));
+                        });
+                        this.set('valueMap', function(value, maponly) {
+                            var rec = this.current().first();
+                            var map = rec.map.get(value || rec.def) || (rec.def ? (rec.map.get(rec.def) || value || rec.def) : value) || value;
+                            if (maponly) return map;
+                            var ini = rec.lookup ? this.initial(rec.lookup === true ? value : value.path(rec.lookup, true)) : this.initial();
+                            return map instanceof Array ? ini.select(map) : (ini.get(map) || (rec.def && ini.get(rec.def)));
+                        });
+                        this.set('typeMap', function(value) {
+                            var rec = this.current().first();
+                            return rec.map.get(this.initial(value || rec.def) || this.initial(rec.def) || rec.def);
+                        });
+                        return this;
+                    },
+                    data: function() {
+                        this.set('mapF', function(map, filter) {
+                            return { filter: filter || (function() { return true; }), map: map || unit };
+                        });
+                        this.set('filterM', function(filter, map) {
+                            return { filter: filter || (function() { return true; }), map: map || unit };
+                        });
+                        this.set('valueMap', function(map, def, lookup) {
+                            var rec = this.get(this.get('key'));
+                            return { map: rec.node('map').parse(map, true), def: def, lookup: lookup || false };
+                        });
+                        this.set('typeMap', function(map, def, lookup) {
+                            var rec = this.get(this.get('key'));
+                            return { map: rec.node('map').parse(map, true), def: def, lookup: lookup || false };
+                        });
+                        return this;
+                    },
+                    idx: function() {
+                        this.child('store');
+                        this.child('mapF');
+                        this.child('filterM');
+                        this.child('valueMap');
+                        this.child('typeMap');
+                        this.child('other');
+                        return this;
+                    },
+                    child: function($child, $maintype, $store) {
+                        return function(name, ctor, ref) {
+                            if ($maintype.test(name)) {
+                                return $store.set(''+this.uid(), this.set(name, $child.call(this, name, ctor, ref)));
+                                //return this.set(name, this.idx.get(name));// || this.idx.$child.call(this, name, ctor, ref);
+                            }else if ($maintype.test(this._cid)) {
+                                var link = this.idx.get(this._cid) || this.idx.get('other');
+                                var inst = link.get(name) || link.set(name, $child.call(this, name, ctor, ref));
+                                return this.set(name, inst);
+                            }else {
+                                return $child.call(this, name, ctor, ref);
+                            }
+                        }
+                    },
+                    $$_of: function($ctor, $idx, $store) {
+                        return function $$_of(ref, name) {
+                            if (ref instanceof $ctor) {
+                                return $store.get(''+ref.uid()) || $store.set(''+ref.uid(), new this(ref, ref.cid()));
+                            }else if (typeof ref == 'string') {
+                                return this.$$_of($store.root.get(ref) || sys.get().ensure(ref).store(), name);
+                            }else {
+                                return new this(ref, name);
+                            }
+                        }
+                    },
+                    ask: function() {
+                        return this.run.apply(this, [].slice.call(arguments).append(true));
+                    },
+                    attrs: [
+                        (function of(ref, name) {
+                            return this.$$_of(ref, name);
+                        })
+                    ],
+                    init: function(type, klass, sys) {
+                        var $store = klass.$store.ctor;
+                        $store.prop('$link', klass.of);
+                        $store.prop('link', type.link);
+                        $store.prop('haslink', type.haslink);
+                        var link = klass.prop('root').child('link', klass.$ctor).store();
+                        klass.prop('data', type.data.call(link.child('data')));
+                        klass.prop('ops', type.ops.call(link.child('ops')));
+                        var $idx = klass.prop('idx', type.idx.call(link.child('idx')));
+                        var $str = $idx.get('store');
+                        klass.prop('child', type.child($store.prop('child'), new RegExp(/(mapF|filterM|valueMap|typeMap|foldMap)/), $str));
+                        klass.$ctor.$$_of = type.$$_of($store.$ctor, $idx, $str);
+
+                        klass.prop('ask', sys.fn.curry(type.ask, true, 2));
+                        klass.prop('resolve', sys.fn.curry(klass.prop('run'), true, 2));
+                    }
+                };
+            }),
+        // === Coyoneda === //
+            (function Coyoneda() {
+                return {
+                    parent: 'Functor',
+                    extend: 'Compose',
+                    klass: function Coyoneda(f, x) {
+                        this.$super.call(this, f, x);
+                    },
+                    ext: [
+                        (function $$init(f, x) {
+                            if (f) this.mf = f;
+                            else if (!this.mf) this.mf = unit;
+                            if (x) this.mv = x;
                         }),
                         (function map(f) {
-                            return Object.keys(this).map(f);
+                            return new this.constructor(this.$fn(this.mf)(f), this.mv);
                         }),
-                        (function keys() {
-                            return Object.keys(this).filter(function(v, i, o) {
-                                return v.substr(0, 1) != '_';
-                            });
+                        (function bind(x, f) {
+                            return this.$fn(this.mf)(unit)(this.mv)(x);
                         }),
-                        (function get(key) {
-                            return this[key];
+                        (function chain(f) {
+                            return this.$fn(this.mf)(f || unit)(this.mv);
                         }),
-                        (function set(key, value) {
-                            return this[key] = value;
+                        (function lift(f) {
+                            return new this.constructor(this.mf, this.mv);
                         }),
-                        (function call() {
-                            var args = [].slice.call(arguments);
-                            if (args.length && args.unshift('fn')) return this.path.call(this._root(), args.join('.'));
-                            return this._root();
-                        }),
-                        (function root(path) {
-                            return path ? this.path.call(this._root(), path) : this._root();
-                        }),
-                        (function parentt(path) {
-                            return path ? this.path.call(this._parent(), path) : this._parent();
-                        }),
-                        (function extend(v, u) {
-                            Object.assign(this, this.reduce(unit, v, u || false));
-                            return this;
-                        }),
-                        (function update(v) {
-                            Object.assign(this, this.reduce(unit, v, true));
-                            return this;
-                        }),
-                        (function reduce(f, v, u) {
-                            return this.keys.call(v).reduce(function(r, k, i, o) {
-                                var x = f(v[k], k, i, o);
-                                if (r[k] && r.is(r[k])) {
-                                    r[k].extend(x, u);
-                                }else if (u && r[k]) {
-                                    // update so no overwrites
-                                }else {
-                                    r[k] = x instanceof Array
-                                        ? x : (r.isObject(x) ? r.of(x) : x);
-                                }
-                                return r;
-                            }, this);
-                        }),
-                        (function bind(b, m) {
-                            return function bind(f, r) {
-                                return b(f, this, m)(r || this.of({}), this, 0);
-                            }
-                        })(
-                            (function(f, o, m) {
-                                return function $bind(x, r, l) {
-                                    return o.keys.call(r).bind(function(k, i, o) {
-                                        var v = f(x, r[k], k, i, r, l);
-                                        return v instanceof Array
-                                            ? v.bind(m(f, (x[k] = {}), i, r[k], l+1, x))
-                                                : (r.isObject(v) ? $bind((x[k] = r.of({})), v, l+1) : v);
-                                    });//.bind(unit);
-                                }
-                            }),
-                            (function(f, x, t, j, l, o) {
-                                return function(r, v, k, i) {
-                                    return f(x, r, v, t, j, l, o);
-                                }
-                            })
-                        ),
-                        (function fold(b, m) {
-                            return function fold(f, r) {
-                                return b(f, this, m)(r || this.of({}), this, 0);
-                            }
-                        })(
-                            (function(f, o, m) {
-                                return function $fold(x, r, l) {
-                                    return o.keys.call(r).map(function(k, i, o) {
-                                        var v = f(x, r[k], k, i, r, l);
-                                        return v instanceof Array ? v.map(m(f, (x[k] = {}), i, r[k], l+1, x))
-                                            : (r.isObject(v) ? $fold((x[k] = r.of({})), v, l+1) : v);
-                                    });                                    
-                                }
-                            }),
-                            (function(f, x, t, j, l, o) {
-                                return function(r, v, k, i) {
-                                    return f(x, r, v, t, j, l, o);
-                                }
-                            })
-                        ),
-                        (function is(x) {
-                            return x instanceof this.__;//x instanceof Array || typeof x != 'object' ? false : true;
-                        }),
-                        (function isObject(x) {
-                            return x && typeof x == 'object' && (x.constructor == Object || x instanceof this.__) ? true : false;
-                        }),
-                        (function info(/* recur, opts */) {
-                            var args  = [].slice.call(arguments);
-                            var recur = (args.length && typeof args[0] == 'boolean' ? args.shift() :
-                                        (args.length && typeof args[args.length-1] == 'boolean' ? args.pop() : false));
-                            var bind  = this.bind(function(r, v, k, i, o) {
-                                console.log(v, k, i);
-                                return v;
-                            }, args.length && typeof args[0] == 'object' ? args.shift() : null);
-                            return bind;//recur ? bind.bind(unit) : bind;
+                        (function run(t, x) {
+                            return this.$fn(this.mf)(unit)(x || this.mv)(t);
                         })
                     ],
                     attrs: [
-                        (function of(x, r) {
-                            return x instanceof this ? x : new this(x, r);
+                        (function of(f, x) {
+                            if (!(f instanceof Function)) return this.lift(f, x);
+                            return new this(f || unit, x);
+                        }),
+                        (function lift(x, f) {
+                            return new this(f || unit, x);
                         }),
                         (function $of() {
                             var ctor = this;
@@ -1695,11 +1593,359 @@
                             }
                         })
                     ],
+                    atom: function(atom) {
+                        return function(f, x) {
+                            return atom(this.$fn(this.mf)(f || unit), (x || this.mv));
+                        }
+                    },
                     init: function(type, klass, sys) {
-                        klass.prop('path', sys.root.get('utils.path'));
+                        klass.prop('atom', type.atom(sys.get('threads.atom')));
+                    }
+                };
+            }),        
+        // === Value === //
+            (function() {
+                return {
+                    klass: function Value(x, l) {
+                        this.id = this.id();
+                        if (x) this.mv = x;
+                        this.mv._locked = l !== false;
+                    },
+                    ext: [
+                        (function of(v, l) {
+                            return this.constructor.of(v, l);
+                        }),
+                        (function lock(lock) {
+                            if (!this._locked && lock !== false) this._locked = true;
+                            return this;
+                        }),
+                        (function unlock() {
+                            if (this.isLocked(this.mv)) this.mv._locked = false;
+                            else if (this.isLocked()) this._locked = false;
+                            return this.mv;
+                        }),
+                        (function isLocked(v) {
+                            return v ? this.__.isLocked(v) : (this._locked === true || this.__.isLocked(this.mv));
+                        }),
+                        (function wasLocked(v) {
+                            return v ? this.__.wasLocked(v) : (this._locked === false || this.__.wasLocked(this.mv));
+                        }),
+                        (function holdLock(v) {
+                            return this.of(v, this._locked !== false);
+                        }),
+                        (function releaseLock() {
+                            return this.of(this.unlock(), false);
+                        }),
+                        (function map(f) {
+                            return this.of(this.mv.map(f), false);
+                        }),
+                        (function bind(f) {
+                            return this.mv && !this.isLocked(this.mv) ? this.unlock().bind(f) : this.of(this.mv.bind(f), false);
+                        }),
+                        (function resolve(f) {
+                            return this.mv && !this.isLocked(this.mv) ? this.unlock().resolve(f) : this.of(this.mv.resolve(f), false);
+                        }),
+                        (function create(opts) {
+                            return this.mv.bind(function(v) {
+                                return function $_pure(k) {
+                                    v.create(opts).run(k);
+                                }
+                            });
+                        }),
+                        (function run(k) {
+                            return this.mv && !this.isLocked(this.mv) ? this.mv.run(k) : k(this);
+                        })
+                    ],
+                    isLocked: function() {
+                        function isLocked(x) {
+                            return x && x._locked;
+                        }
+                        return isLocked;
+                    },
+                    wasLocked: function() {
+                        function wasLocked(x) {
+                            return x && x._locked === false;
+                        }
+                        return wasLocked;
+                    },
+                    unlock: function(isLocked) {
+                        function unlock(v) {
+                            if (isLocked(v) && !(v._locked = false)) return v;
+                            return v;
+                        }   
+                        return unlock;
+                    },
+                    attrs: [
+                        (function of(v, l) {
+                            return new this(v, l);
+                        })
+                    ],
+                    value: function(v) {
+                        return function() {
+                            return v.of(this instanceof v.$ctor ? this.mv : this);
+                        }
+                    },
+                    init: function(type, klass, sys) {
+                        klass.$ctor.isLocked  = type.isLocked(klass);
+                        klass.$ctor.wasLocked = type.wasLocked(klass);
+                        klass.$ctor.unlock    = type.unlock(klass.$ctor.isLocked);
+
+                        this.find('Cont').prop('$value', type.value(klass));
                     }
                 };
             }),
+        // === Maybe === //
+            (function Maybe() {
+                return {
+                    parent: 'Functor',
+                    klass: function Maybe(x, a) {
+                        this.id = this.id();
+                        if (x || typeof x != 'undefined')
+                            this._x = !a && x instanceof Function && x.length > 1 ? this.fn.curry(x) : x;
+                    },
+                    ext: [
+                        (function prop() {
+                            var args = Array.prototype.slice.call(arguments);
+                            return this.map(this.property(args.shift()).apply(undefined, args));
+                        }),
+                        (function get(key) {
+                            return this.map(this.pget(key));
+                        }),
+                        (function values(recur) {
+                            return this.map(this.pval(recur));
+                        }),
+                        (function $isNothing(v) {
+                            return v === null || v === undefined || v === false;
+                        }),
+                        (function isNothing() {
+                            return this._x === null || this._x === undefined || this._x === false;
+                        }),
+                        (function ifSome(mf) {
+                            return this.isNothing() || !mf || !(mf instanceof Function) ? null : mf.call(this, this._x);
+                        }),
+                        (function filter(f) {
+                            return this.map(function(v) {
+                                if (f(v)) return v;
+                            });
+                        }),
+                        (function chain(f) {
+                            if (f instanceof Function) {
+                                return this.ifSome(f || unit);
+                            }else if (this._x instanceof Function) {
+                                return this.ifSome(this.fn.pure(f));
+                            }else {
+                                return this.ifSome(f);
+                            }
+                        }),
+                        (function orElse(mv) {
+                            return this.isNothing() ? new this.constructor(mv instanceof Function ? mv() : mv) : this;
+                        }),
+                        (function map(mf) {
+                            return new this.constructor(this.chain(mf), true);
+                        }),
+                        (function run(f) {
+                            return this.chain(f || unit);
+                        }),
+                        (function ap(other) {
+                            return this.is(other) ? this.map(function(f) {
+                                return other.chain(f);
+                            }) : this.of(other).map(this._x);
+                        }),
+                        (function apply(other) {
+                            return other.ap(this);
+                        }),
+                        (function unit() {
+                            return this._x;
+                        }),
+                        (function join() {
+                            return this._x;
+                        })
+                    ],
+                    attrs: [
+                        (function of(x) {
+                            return x && x instanceof this ? x : new this(x);
+                        }),
+                        (function pure(x) {
+                            return new this(x, true);
+                        })
+                    ],
+                    toIO: function($iopure) {
+                        return function() {
+                            return this.chain($iopure);
+                        }
+                    },
+                    toMaybeIO: function($iof) {
+                        return function() {
+                            return $iof(this).lift(function(mbfn, value) {
+                                return mbfn.chain(function(fn) {
+                                    return this.of(value).chain(fn);
+                                });
+                            });
+                        }
+                    },
+                    toMaybe: function($maybe) {
+                        return function() {
+                            return this.map($maybe.of);
+                        }
+                    },
+                    runMaybe: function($maybe) {
+                        return function(v) {
+                            return $maybe.of(this.run(v));
+                        }
+                    },
+                    init: function(type, klass, sys) {
+                        var root = this.$store.root, utils = root.get('utils');
+                        var property = klass.prop('property', utils.get('property'));
+                        klass.prop('pget', property('get'));
+                        klass.prop('pval', property('values'));
+                        klass.prop('curry', utils.get('curry'));
+                        var IO = this.find('IO');
+                        klass.prop('toIO',  type.toIO(IO.pure));
+                        klass.prop('toMaybeIO', type.toMaybeIO(IO.of));
+                        IO.prop('toMaybe',  type.toMaybe(klass));
+                        IO.prop('runMaybe', type.runMaybe(klass));
+                        this.root().base.prototype.maybe = klass.of;
+                    }
+                };
+            }),
+        // === Thread === //
+            (function() {
+                return {
+                    klass: function Thread(f, t) {
+                        this._id = this.ctor.$id = this.id();
+                        this._x  = f;
+                        this._t  = t || '$enqueue';
+                    },
+                    ext: [
+                        (function of(x) {
+                            return this.constructor.of(x);
+                        }),
+                        (function map(f) {
+                            return new this.constructor(this.$fn('mapThread')(this._x, f), this._t);
+                        }),
+                        (function bind(f, x) {
+                            return new this.constructor(this.$fn('bindThread')(this._x, this.$fn('makeBind')(f, x || {}, this)), this._t);
+                        }),
+                        (function run(f) {
+                            this[this._t].enqueue(f ? this.$fn('mapThread')(this._x, f) : this._x);
+                        }),
+                        (function info() {
+                            return this[this._t];
+                        })
+                    ],
+                    $ext: function() {
+                        return [
+                            { name: '$fn', value: this.get(this.threads)('path') },
+                            { name: '$proc', value: this.process },
+                            { name: '$next', value: this.enqueue },
+                            { name: '$make', value: this.get('addThreads') },
+                            { name: '$enqueue', value: this.threads.set('enqueue', this.threads.get('addThreads')([], this.enqueue, '$enqueue')) },
+                            { name: '$anim', value: this.threads.set('anim',
+                                this.threads.get('addThreads')([], this.process.get('animFrame.enqueue'), '$anim'))
+                            }
+                        ];
+                    },
+                    attrs: (function() {
+                        return [].slice.call(arguments).apply();
+                    })(
+                        (function(t, p, of, arr, que, lst, wrap, raf) {
+                            var parse = p(t);
+                            var bindL = t.get('bindLazy');
+                            var lazyV = t.get('lazyValue');
+                            return [
+                                parse,
+                                of(parse),
+                                arr(bindL, lazyV, t.get('arrThread')),
+                                que(bindL, lazyV, t.get('queueThread'), wrap),
+                                lst(bindL, lazyV, t.get('listThread'), wrap),
+                                raf
+                            ];
+                        }),
+                        this.get('threads'),
+                        (function(cmd) {
+                            return function parse(v) {
+                                if (v instanceof Function) {
+                                    return v;
+                                }else {
+                                    return cmd.get('lazyValue')(v);
+                                }
+                            }
+                        }),
+                        (function(parse) {
+                            return function of(v) {
+                                return new this(parse(v));
+                            }
+                        }),
+                        (function(bindLazy, lazyValue, arrThread) {
+                            return function arr(a, f, k, m) {
+                                return new this(bindLazy(lazyValue(a), arrThread(f, k, m)));
+                            }
+                        }),
+                        (function(bindLazy, lazyValue, queThread, wrapThread) {
+                            return function queue(a, f, k, t, m) {
+                                return wrapThread(a, new this(queThread(f, k, m)(a), t));
+                            }
+                        }),
+                        (function(bindLazy, lazyValue, listThread, wrapThread) {
+                            return function list(a, f, k, t, m) {
+                                return wrapThread(a, new this(bindLazy(lazyValue(a), listThread(f, k, m)), t));
+                            }
+                        }),
+                        (function(wrap) {
+                            return function(arr, thread) {
+                                return wrap(wrap, arr, thread);
+                            }
+                        })(
+                            (function(wrap, arr, thread) {
+                                var count = 1;
+                                return {
+                                    info: function() {
+                                        return arr;
+                                    },
+                                    bind: function(f, x) {
+                                        return wrap(wrap, arr, thread.bind(f, x));
+                                    },
+                                    push: function(args, appl) {
+                                        if (!(arr.length * (appl ? arr.push.apply(arr, args) : arr.push(args)))) {
+                                            thread.run();
+                                        }else if (false && count++ > 80 && (count = 1)) {
+                                            var log = sys.run().log;
+                                            log('====');
+                                            sys.klass('Functor').of(arr).run(log);
+                                        }
+                                        return this;
+                                    },
+                                    add: function() {
+                                        arr.push.apply(arr, arguments);
+                                        return this;
+                                    },
+                                    run: function(f) {
+                                        thread.run(f);
+                                        return this;
+                                    }
+                                };
+                            })
+                        ),
+                        (function raf(a, f, k) {
+                            return this.list(a, f, k, '$anim', 'suspend');
+                        })
+                    ),
+                    init: function(type, klass) {
+                        var store = klass.$store.root;
+                        type.$ext.call({
+                            get: store.get('utils.target'),
+                            threads: store.get('threads'),
+                            process: store.get('process'), enqueue: store.get('process.nextTick.enqueue')
+                        }).reduce(function(r, v) { r.prop(v.name, v.value); return r; }, klass);
+                    }
+                };
+            })
+    ),
+
+    (function MakeTypes2() {
+
+        return [].slice.call(arguments);
+    })(
         // === Cell === //
             (function() {
                 return {
@@ -1773,18 +2019,18 @@
                 return {
                     parent: 'Cont',
                     klass: function Control(x, f) {
-                        this.$super.apply(this, arguments);
+                        this.$super(x, f);
                     },
                     ext: [
                         (function $$init(x, f) {
                             if (x) this.mv = this.$cast(x);
                         }),
-                        { name: 'async', value: this.load('loc').run('async').select('count', 'times', 'inject', 'eject', 'delay') },
+                        { name: 'async', value: this.get('async').select('count', 'times', 'inject', 'eject', 'delay') },
                         (function times(x) {
-                            return new this.constructor(this.async.times(x, this.mv));//this.lazy(this.mv)));
+                            return this.$count(this.of(this.async.times(x, this.mv)), '$$of');//this.lazy(this.mv)));
                         }),
                         (function delay(ms) {
-                            return new this.constructor(this.async.delay(this.mv, ms));
+                            return this.$count(this.of(this.async.delay(this.mv, ms)), '$$of');
                         }),
                         (function parse(succ, fail) {
                             return function(result) {
@@ -1792,9 +2038,12 @@
                             }
                         }),
                         (function eject(succ, fail) {
-                            return new this.constructor(this.async.eject(this.mv, this.parse(succ, fail)));
+                            return this.$count(this.of(this.async.eject(this.mv, this.parse(succ, fail))), '$$of');
                         })
-                    ]
+                    ],
+                    init: function(type, klass, sys) {
+                        klass.prop('$cast', klass.prop('$$cast').bind(klass.proto()));
+                    }
                 };
             }),
         // === Signal === //
@@ -1802,29 +2051,12 @@
                 return {
                     name: 'Signal',
                     klass: function Signal(ref) {
-                        this._id = this.id();
+                        this._id = this.ctor.$id = this.id();
                         this._listener = ref;
                         this._values   = [];
                         this._handlers = [];
-                        this._thread   = this.thread();
                     },
                     ext: [
-                        (function thread() {
-                            return this.ctor.find('Thread').$ctor.queue(this._values, (function(handlers) {
-                                return function(evt) {
-                                    handlers.reduce(function(value, hndl) {
-                                        if (hndl.eid < value.eid && hndl.filter(value)) {
-                                            hndl.run(value);
-                                        }else {
-                                            //console.log(value, hndl)
-                                        }
-                                        hndl.eid = value.eid; value.count++;
-                                        return value;
-                                    }, evt);
-                                    return true;
-                                }
-                            })(this._handlers));
-                        }),
                         (function make(info, handler) {
                             if (info && info.uid == this._listener.uid && info.hid) {
                                 info.hid = this.hid();
@@ -1833,8 +2065,8 @@
                                 return {
                                     uid: this._listener.uid, hid: this.hid(), opts: info.opts || {},
                                     elem: info.element, eid: 0, name: info.name, ref: info.selector,
-                                    identifier: info.identifier || handler.name,
-                                    filter: info.filter, throttle: info.throttle, run: handler
+                                    filter: info.filter, throttle: info.throttle,
+                                    run: handler, atom: info.throttle ? handler : this.lazy(handler)
                                 }
                             }
                         }),
@@ -1877,9 +2109,17 @@
                             if (!this._handlers.length) this.toggle('off');
                             return hnd;
                         }),
+                        (function filter(item) {
+                            return function(res, hndl) {
+                                item.count++;
+                                if (hndl.eid < item.eid && hndl.filter(item)) {
+                                    hndl.eid = item.eid; res.push(hndl.atom(item));
+                                }
+                                return res;
+                            }
+                        }),
                         (function run(value) {
-                            if (this._handlers.length)
-                                this._thread.push(this._listener.create(value));
+                            return this._handlers.reduce(this.filter(this._listener.create(value)), []);
                         })
                     ],
                     attrs: [
@@ -1889,6 +2129,7 @@
                     ],
                     init: function(type, klass, sys) {
                         klass.prop('hid', this.makeID(''));
+                        klass.prop('lazy', sys.get('threads.mapLazy'));
                     }
                 };
             }),
@@ -1899,14 +2140,22 @@
                     parent: 'Store',
                     klass: function Queue(ref, name) {
                         this.$super.call(this, ref, name);
+                        this.ctor.$id = this.uid();
                     },
                     ext: [
+                        (function thread() {
+                            return this.klass('Thread').$ctor.queue([], function(v) {
+                                return v() || true;
+                            });
+                        }),
                         (function enqueue(item) {
                             item.eid = this.eid();
-                            this.get(item.type).run(item);
+                            this.get(item.type).run(item).map(this.thread.push);
                             return this;
                         }),
                         (function wrap() {
+                            var type = this.parent().store();
+                            this.thread = type.get('thread') || type.set('thread', type.thread());
                             return this.enqueue.bind(this);
                         }),
                         (function create(listener) {
@@ -1934,10 +2183,9 @@
                     name: 'Events',
                     parent: 'Node',
                     klass: function Events(opts) {
-                        this.$super.call(this, opts || (opts = {}));
-
+                        this.$super(opts || (opts = {}));
                         this.initdata();
-                        this.thread = this.thread();
+                        this.thread = this.set('thread', this.thread());
                     },
                     ext: [
                         (function initdata() {
@@ -1945,7 +2193,7 @@
                             this._active = this._active || (this._active = this._lstnrs.set('active', []));
                         }),
                         (function thread() {
-                            return this.ctor.find('Thread').$ctor.queue([], this.sys().get('utils.bin')
+                            return this.klass('Thread').$ctor.queue([], this.sys().get('utils.bin')
                             (function next(handlers, value) {
                                 handlers.map(function(hndl) {
                                     if (value.ref.indexOf(hndl.ref) === 0) {
@@ -1959,7 +2207,6 @@
                         (function addEventListener(/* instance, name, selector, target, opts */) {
                             var args = [].slice.call(arguments), instance = args.shift(), lstr;
                             if (args.length == 1 && typeof args.first() == 'object') {
-                                debugger;
                             }else {
                                 var name = args.shift();
                                 var target = args.pop(), opts = args.length && typeof args.last() == 'object' ? args.pop() : {};
@@ -2008,8 +2255,8 @@
                         })
                     ],
                     init: function(type, klass, sys) {
-                        var Root = sys.root; klass.prop('isEvents', true);
-                        var Events = Root.__.prototype._events = klass.prop('_events', Root.child('events', klass.$ctor));//klass.of(type, klass));
+                        var Root   = sys.root; klass.prop('isEvents', true);
+                        var Events = Root._events = Root.child('events', klass.$ctor);
                     }
                 };
             }),
@@ -2019,7 +2266,7 @@
                     name: 'Listener',
                     parent: 'IO',
                     klass: function Listener(x) {
-                        this.$super.call(this, x);
+                        this.$$init(x);
                     },
                     ext: (function() {
                         return [].slice.call(arguments).pure(0, true);
@@ -2207,6 +2454,7 @@
                                     }
                                     if (elem) {
                                         evt.currentTarget = elem;
+                                        evt.value = (elem.value || elem.name || elem.innerText || '').toLowerCase();
                                         while (elem) {
                                             if (!element) break;
                                             else if (elem == element) break;
@@ -2225,7 +2473,6 @@
                                     count: evt.count || 0,
                                     target: evt.target,
                                     currentTarget: null,
-                                    value: (evt.target.value || evt.target.name || evt.target.innerText || '').toLowerCase(),
                                     relatedTarget: evt.relatedTarget,
                                     x: evt.clientX || evt.x || -1,
                                     y: evt.clientY || evt.y || -1
@@ -2327,7 +2574,8 @@
                     klass: function Component(opts) {
                         if (!opts.parent) opts.parent = this._node;
 
-                        this.$super.call(this, opts);
+                        this.$$init(opts);
+                        this.connect();
                         if (opts.view) this.view = this.konst(this.set('view', opts.view));
                         this._started  = 1;
 
@@ -2350,16 +2598,12 @@
 
                             return plural ? 'components' : 'component';
                         }),
-                        (function connect() {
-                            this.listener   = this.parent().listener;
-                            this.dispatcher = this.listener.run(this);
-                        }),
                         (function attr() {
 
                             return { 'class' : this.constructor.name.toLowerCase() + ' ' + this.origin() };
                         }),
                         (function view() {
-                            return (this.view = this.konst(this.child('view', this.deps('components.view'))))();
+                            return (this.view = this.konst(this.child('view', this.deps('components.view') || this.klass('View').$ctor)))();
                         }),
                         (function state(key, value) {
                             return (this._state || (this._state = this.node('state'))).acc(key, value);
@@ -2413,7 +2657,7 @@
                         }),
                         (function $proxy(evt, proxy) {
                             if (proxy && (evt.currentTarget || (evt.currentTarget = evt.target)).matches(proxy.selector))
-                                this.emit('change', proxy.path, ('' + (evt.value || evt.target.value || evt.target.id || evt.target.innerText || '')).toLowerCase(), evt.value || evt.currentTarget.value || evt.currentTarget.innerText || '');
+                                this.parent().emit('change', proxy.path, ('' + (evt.value || evt.target.value || evt.target.id || evt.target.innerText || '')).toLowerCase(), evt.value || evt.currentTarget.value || evt.currentTarget.innerText || '');
                         }),
                         (function control() {
                             return this.get([ 'data.control' ].concat([].slice.call(arguments)).join('.'))
@@ -2428,14 +2672,14 @@
                         (function on(name, selector, handler, throttle) {
                             return this.view().on(name, selector, typeof handler == 'string' ? this.handler(handler) : handler, parseInt(throttle || '') || 0);
                         }),
-                        (function handler(fn) {
+                        (function hhandler(fn) {
                             var ctx = this;
                             var ref = fn.indexOf('.') > 0 ? fn.split('.').slice(0, -1).join('.') : '';
                             return function() {
                                 return ref ? ctx.get(fn).apply(ctx.get(ref), arguments) : ctx[fn].apply(ctx, arguments);
                             }
                         }),
-                        (function hhandler(fn) {
+                        (function handler(fn) {
                             var ctx = { store: this, fn: fn, ref: fn.indexOf('.') > 0 ? fn.split('.').slice(0, -1).join('.') : '' };
                             return function() {
                                 return ctx.run ? ctx.run.apply(ctx.ctx, arguments) : (ctx.ref
@@ -2540,15 +2784,21 @@
                             }
                             return cell.kont();
                         }),
-                        (function component(name, type) {
+                        (function component(ref, type) {
+                            var path = ref.split('.');
+                            var name = path.pop();
                             var comp = this.get(name);
                             if (!comp) {
-                                var cmps = this.deps('components');
-                                type || (type = name);
-                                if (cmps[type]) {
-                                    comp = this.set(name, cmps[type].create({ name: name, parent: this })); 
-                                }else {
-                                    comp = cmps['$'+type].create({ name: name, parent: this });
+                                var cmps = this.deps(path.length ? path.shift() : 'components');
+                                var code = type || name;
+                                if (cmps[code]) {
+                                    comp = this.set(name, cmps[code].create({ name: name, parent: this })); 
+                                }else if (cmps['$'+code]) {
+                                    comp = cmps['$'+code].create({ name: name, parent: this });
+                                }else if (cmps[code.replace('.', '.$')]) {
+                                    comp = cmps[code.replace('.', '.$')].create({ name: name, parent: this });
+                                }else if (!type) {
+                                    comp = this.klass('Component').of({ name: name, parent: this });
                                 }
                             }
                             return comp;
@@ -2606,8 +2856,8 @@
                                 }
                                 if (!conf.opts && args.length && typeof args[0] == 'object') conf.opts = args.shift();
                                 if (!conf.parent) conf.parent = node;
-                                //return node.child(conf, this);
-                                return conf.parent.child(conf, this);
+
+                                return conf.parent.exists(conf) || conf.parent.child(conf, this);
                             };
                         })(this.components)
                     ],
@@ -2650,8 +2900,14 @@
                         (function connect() {
                             var ctor = this.klass('Listener').$ctor;
                             var lstr = this.listener = ctor.init(this.cid(), 'store');
-                            this._events    = this._events.child({ name: 'events', parent: this });
-                            this.dispatcher = lstr.run(this);
+                            if (!this.dispatcher) this.dispatcher = lstr.run(this);
+
+                            return this.maybe(this.walk('parent', function(v) {
+                                return v._events;
+                            })).lift(function(evts, comp) {
+                                comp._events = evts._events.child({ name: 'events', parent: comp });
+                                return comp;
+                            }).ap(this.maybe(this));
                         }),
                         (function(display, show, make, add) {
                             return function routes(router) {
@@ -2684,29 +2940,31 @@
                             (function(loader, display) {
                                 return function(current) {
                                     var mod = this.get('info', current, 'module');
-                                    loader.run([ 'modules', mod, mod ].join('/')).create(current).run(display);
+                                    loader.run([ 'modules', mod, mod ].join('/'), current).run(display);
                                 }
                             }),
                             (function(router, route) {
                                 router.parent('config.modules').store().bind(function(v, k, i, o) {
-                                    router.addRoute(v.route, route, { description: v.label, module: v.name || v.route }, v.alias);
+                                    if (v.route) {
+                                        router.addRoute(v.route, route, { description: v.label, module: v.name || v.route }, v.alias);
+                                    }
                                 }).run(function() {
                                     router.startup();
                                 });
-
                                 return router;
                             })
                         )
                     ],
+                    $el: function() {
+                        return document.getElementById('root');
+                    },
                     init: function(type, klass, sys) {
                         var comp = this.find('Component'), root = sys.root;
                         var node = comp.prop('_node', root.child('components', klass.$ctor));
+                        node.$el = node.konst(this.find('IO').pure(type.$el));
                         var disp = comp.prop('listener', node.listener);
-                        // var evts = comp.prop('_events', node._events);
                         var lstr = this.find('Listener').$ctor;
-                        //comp.prop('dispatcher', node.dispatcher);
                         comp.prop('dom', lstr.init('dom'));
-                        //proto._dom = body.run(document.body.firstElementChild);
                     }
                 };
             }),
@@ -2794,7 +3052,206 @@
                         })
                     ]
                 };
+            }),
+        // === Context === //
+            (function() {
+                return {
+                    klass: function Context(opts, ref) {
+                        this.$super.call(this, opts, ref);
+                    },
+                    ext: [
+                        (function $$init(opts, ref) {
+                            //return this.parse(opts, ref);
+                        }),
+                        (function $values(keys, vals) {
+                            return { keys: keys, vals: vals && vals instanceof Array ? vals : ((typeof vals == 'object' ? keys.map(function(k, idx) {
+                                return vals[keys[idx]];
+                            }) : keys.slice(0))) };
+                        }),
+                        (function $keys() {
+                            var args = [].slice.call(arguments).flat();
+                            if (args.length == 1 && typeof args[0] == 'object')
+                                return this.$values(Object.keys(args.first()), args.shift());
+                            else
+                                return this.$values(args, args);
+                        }),
+                        (function reduce(a, f, r) {
+                            var vals  = this.$keys(a);
+                            vals.res  = r || {};
+                            if (!vals.link) vals.link = this.link('valueMap');
+                            return vals.keys.reduce(function(r, k, i) {
+                                return f(r, r.vals[i], k, r.vals) || r;
+                            }, vals);
+                        }),
+                        (function parse(/* data, link, store */) {
+                            return this.reduce([].slice.call(arguments), function(res, val, key) {
+                                if (key == 'parent') {
+                                    res.link.add('children', 'parent', store);
+                                }
+                                return res;
+                            }, this);
+                        }),
+                        (function valueMap(type, code, label, values) {
+                            this.link(type || 'valueMap').add(code, this.codes(values));
+                            this.link(type || 'valueMap').add(label,this.labels(values));
+                            return this.link;
+                        }),
+                        (function modelMap(curr, next, value) {
+                            this.valueMap('modelMap', 'current', 'next', value);
+                        })
+                    ]
+                };
+            }),
+        // === Transformer === //
+            (function() {
+                return {
+                    klass: function Transformer(monad) {
+                        this.id = this.id();
+                        this._m = monad || this._m;
+                        this._r = this._r;
+                    },
+                    ext: [
+                        (function of(monad) {
+                            return new this.constructor(monad);
+                        }),
+                        (function ask() {
+                            return this._r.ask();
+                        }),
+                        (function asks(fn) {
+                            return this._r.asks(fn);
+                        }),
+                        (function unit(ctx) {
+                            return this._r.unit(ctx);
+                        }),
+                        (function get(key) {
+                            return this._r.store(key);
+                        }),
+                        (function store(key, value) {
+                            return typeof value == 'undefined' ? (!key ? this.$context : this.$context.get(key)) : (this.$context.set(key, value));
+                        }),
+                        (function add(key, fn) {
+                            return this.$context.get(key) || this.$context.set(key, this.of(fn || this._f));
+                        }),
+                        (function put(key, value, returnValue) {
+                            var result;
+                            if (key && typeof value == 'object') {
+                                var store = this.$context.get(key) || this.$context.child(key);
+                                result = store.parse(value);
+                            }else if (key && typeof key == 'object') {
+                                result = this.$context.parse(key);
+                            }else if (key && value) {
+                                result = this.$context.set(key, value);
+                            }else if (key) {
+                                result = this.$context.get(key) || this.$context.child(key);
+                            }
+                            return returnValue ? result : this;
+                        }),
+                        (function reader() {
+                            return this._r;
+                        }),
+                        (function map(fn) {
+                            return this.of(this._m.map(fn));
+                        }),
+                        (function bind(k) {
+                            return this.$cont(k);
+                        }),
+                        (function lift(x) {
+                            return this.of(this._m.of(x));
+                        }),
+                        (function test(value) {
+                            if (!value) return {};
+                            else if (this.ctor.root().is(value)) return { type: true };
+                            return {
+                                'reader' : this._r.is(value),
+                                'monad'  : this._m.is(value),
+                                'trans'  : this.is(value)
+                            };
+                        }),
+                        (function result(ctx, res) {
+                            if (!res) {
+                                return this;
+                            }else if (res.type) {
+                                return this;
+                            }else {
+                                var test = this.test(res);
+                                if (test.reader) return res;
+                                else if (test.monad) return this;
+                            }
+                            return this._r.unit(res);
+                        }),
+                        (function $result(t, k, c) {
+                            return function(r) {
+                                return k.call(t._m, t.result(c || t, r));
+                            }
+                        }),
+                        (function run(k) {
+                            return this._r.bind(this.$result(this, k || unit, this._r), this);
+                        })
+                    ],
+                    attrs: [
+                        (function of(monad) {
+                            return new this(monad);
+                        }),
+                        (function initial(reader, monad) {
+                            var name = reader.name || reader._cid || reader.constructor.name;
+                            var extT = this.ctor.extend(name + 'T', { _r: reader });
+                            if (monad) extT.prop('_m', monad);
+                            return extT.of();
+                        })
+                    ],
+                    initial: function(reader, monad) {
+                        return this.$ctor.initial(reader, monad);
+                    },
+                    extendCont: function() {
+                        return this.klass.extend(function ContT(trans) {
+                            this.$super.call(this, trans);
+                        }, {
+                            mv: function $_pure(k) {
+                                return trans.run(trans.$kont(k));
+                            },
+                            mf: this.mf
+                        })
+                    },
+                    $_cont: function(v) {
+                        return function $_pure(k) {
+                            return v.lift(k)
+                        }
+                    },
+                    makeCont: function(cont) {
+                        return function(k) {
+                            return cont.of(this).bind(this.$kont(k));
+                        }
+                    },
+                    makeHandler: (function $kont(w, h) {
+                        return function kont(k) {
+                            return w(h, k, this);
+                        }
+                    })(
+                        (function wrapper(h, k, t) {
+                            return function() {
+                                return h(t, this)(k.call(this, [].slice.call(arguments)));
+                            }
+                        }),
+                        (function handler(t, c) {
+                            return function(result) {
+                                return t.result(c, result);
+                            }
+                        })
+                    ),
+                    init: function(type, klass, sys) {
+                        klass.constructor.prototype.initial = type.initial;
+                        klass.prop('$of', klass.$ctor.of.bind(klass.$ctor));
+                        klass.prop('$cont', type.makeCont(type.extendCont.call({ klass: this.find('Cont'), mf: type.$_cont })));
+                        klass.prop('$kont', type.makeHandler);
+
+                        klass.prop('$$kont', klass.$store.node('$$cache').node('$$kont'));
+                        klass.prop('$context', klass.root().get().child('context', klass.find('Context').$ctor));
+
+                        klass.prop('$root', klass.initial(klass.find('Reader').fromConstructor('fromStore', sys.get()), klass.find('Coyoneda')));
+                    }
+                };
             })
+
     ),
 
     (function MakeEffects() {
@@ -2819,14 +3276,13 @@
                             var curr = router.getFromHash();
                             if (!user.auth() || curr == 'auth') {
                                 router.setRoute('auth');
-                                return sys.eff('sys.loader.component').run('modules/auth/auth').create('auth').pure();
+                                return sys.eff('sys.loader.component').run('modules/auth/auth', 'auth').cont();
                             }else {
                                 router.setRoute(curr);
-                                return sys.eff('sys.loader.component').run('modules/application/application').create('home').pure();
+                                return sys.eff('sys.loader.component').run('modules/application/application', 'home').cont();
                             }
                         }).run(function(app) {
                             sys.get('components').routes(sys.get('router'));
-                            //app.routes(sys.get('router'));
                         });
                     }).cont();
                 }).attr('name', 'core.app');

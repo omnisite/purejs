@@ -23,12 +23,12 @@
             this.load('loc').lift(function(ctor, v) {
                 var def = v instanceof Function ? v.call(this) : v;
                 if (def.klass && def.klass.name == 'Bind') {
-                    def.ext.unshift(def.ext.remove(2).shift().call(undefined, this.load('loc').run('utils.extend'),
+                    def.ext.unshift(def.ext.remove(2).shift().call(undefined, this.get('utils.extend'),
                         { pure: true, arr: true, val: true, cont: false, other: true, done: true }));
                 }
                 if (def.parent) {
                     ctor.find(def.parent).parse(def);
-                }else {
+                }else if (def.klass) {
                     ctor.parse(def);
                 }
                 return this;
@@ -78,22 +78,25 @@
                     return a;
                 }
             }),
-            (function extract(fn) {
-                return fn(unit);
+            (function extract(v) {
+                return function $_pure(k) {
+                    return k(v);
+                }
             }),
             (function curry(fn, bound, numArgs, countAllCalls) {
                 if (((numArgs = numArgs || fn.length) < 2)) return fn;
                 else if (!bound && this != self) bound = this;
 
-                var countAll = countAllCalls !== false;
+                var countAll = countAllCalls !== false, ctx = bound && bound !== true ? bound : null;
                 return function f(args) {
                     return function $_curry() {
+                        if (bound === true && !ctx) ctx = this;
                         var argss = [].slice.apply(arguments);
                         if (countAll && !argss.length) argss.push(undefined);
-                        if ((args.length + argss.length) === numArgs) {
-                            return fn.apply(bound, args.concat(argss));
-                        }else {
+                        if ((args.length + argss.length) < numArgs) {
                             return f(args.concat(argss));
+                        }else {
+                            return fn.apply(ctx, args.concat(argss));
                         }
                     }
                 }([]);
@@ -187,7 +190,7 @@
                         return typeof from == 'number' ? this.substr(from, to || (this.length - from - 1)).isUpperCase() : (this.toUpperCase() == this);
                     };
                     String.prototype.toCamel = function(){
-                        return this.length < 3 ? this.toLowerCase() : this.replace(/\$/g, '').replace(/(^[a-z]{1}|\-[a-z])/g, function($1){return $1.toUpperCase().replace('-','');});
+                        return this.length < 3 ? this.toLowerCase() : this.replace(/\$/g, '').replace('.', '').replace(/(^[a-z]{1}|\-[a-z])/g, function($1){return $1.toUpperCase().replace('-','');});
                     };
                     String.prototype.toDash = function() {
                         return this.length < 2 ? this.toLowerCase() : this.replace(/([A-Z])/g, function($1, p1, pos){return (pos > 0 ? "-" : "") + $1.toLowerCase();});
@@ -203,6 +206,9 @@
                     };
                     String.prototype.toKey = function() {
                         return this.length ? this.substr(0, 1).toLowerCase().concat(this.slice(1)) : this;
+                    };
+                    String.prototype.path = function(rel, full) {
+                        return rel ? (full ? [ rel ] : []).concat(this.split('.').slice(rel.split('.').length)).join('.') : this;
                     };
                     this.prototype.insert = function(position) {
                         this.push.apply(this, this.splice(0, position).concat([].slice.call(arguments, 1)).concat(this.splice(0)));
@@ -291,11 +297,9 @@
                                 }, []).shift());
                             }
                         }else {
-                            test = sys.load('sys').run(args.first());//args.apply();
+                            test = sys.load('sys').run(args.first());
                         }
-                        if (test instanceof Array) {
-                            debugger;
-                        }else if (klass.test(test.constructor)) {
+                        if (klass.test(test.constructor)) {
                             if (!test.ref) {
                                 node = require(test);
                                 return node.set('cont', test.attr('ref', node.uid()));
@@ -304,9 +308,11 @@
                             }
                         }else {
                             if ((node = sys.get('script').get(test.name) || require(test))) {
-                                cont = node.get('cont');
-                                if (cont) return cont;
-                                else if (test && (cont = klass.of(test))
+                                if (!test.name || test.name.slice(-4) != 'json') {
+                                    cont = node.get('cont');
+                                    if (cont) return cont;
+                                }
+                                if (test && (cont = klass.of(test))
                                     && cont.attr('name', test.name))
                                         cont.attr('ref', node.uid());
                                 return node.set('cont', cont);
@@ -316,7 +322,7 @@
                     };
                 }),
                 (function require(def) {
-                    var path, head, tag, type, node, ref;
+                    var path, head, tag, type, node, ref, json;
                     if (def && def.ref) {
                         return sys.find(def.ref);
                     }else if (def && def.name) {
@@ -330,6 +336,8 @@
                             }
                         }else if (type == 'modules' || type == 'lsibs') {
                             path.append(path.last());
+                        }else if (path.last() == 'json') {
+                            return sys.get('script').get('json', path.slice(0, -1));
                         }
                         return sys.get('script').get(path);
                     }else {
@@ -368,7 +376,7 @@
                 var $Sys     = $Root.set('sys', this);
                 var $Functor = $CTOR.parse(Functor);
                 var $Compose = $Functor.parse(Compose);
-                var $Cont    = $Compose.parse(Cont);
+                var $Cont    = $Functor.parse(Cont);
                 var $Reader  = $Compose.parse(Reader);
 
                 return $Reader.of();
@@ -433,10 +441,13 @@
                             var args = [].slice.call(arguments, 1);
                             return prnt ? (args.length ? prnt.get(args.join('.')) : prnt) : null;
                         },
+                        name: function() {
+                            return this.ctor.toDash();
+                        },
                         add: function() {
-                            var parent = this.parent();
+                            var parent = this.parent(), uid;
                             if (parent && parent.$store) this.$store = parent.$store.child(this.$code);
-                            if (this.$store) this.$index.set(this.$code, this.$store.set('type', this).$store.uid());
+                            if (this.$store && (uid = this.$store.set('type', this).$store.uid()) && !this.$index.get(this.$code)) this.$index.set(this.$code, uid);
                             return this;
                         },
                         update: function(base, ext, keys) {
@@ -522,6 +533,13 @@
                             var proto = type.ext instanceof Function ? type.ext.call(this.sys()) : type.ext;
                             var attrs = type.attrs;
                             var klass = this.extend(ctor, proto, attrs);
+                            var extnd = type.extend ? this.find(type.extend).proto() : false;
+                            if (extnd) {
+                                Object.keys(extnd).reduce(function(r, k) {
+                                    if (!r[k]) r[k] = extnd[k];
+                                    return r;
+                                }, klass.proto());
+                            }
                             if (type.init) type.init.call(this, type, klass, this.sys());
                             return klass;
                         },
@@ -547,7 +565,8 @@
                             }else {
                                 var uid = this.$index.get(name);
                                 var res = uid ? this.$index.find(uid, true) : null;
-                                if (res) res = res.get(path || 'type');
+                                if (res && path) res = path === path.toLowerCase() ? res.get(path) : res.get(path.toTypeCode());
+                                else if (res) res = res.get('type');
                             }
                             return res;
                         },
@@ -565,7 +584,7 @@
                             return this.mixin(ext, this.$ctor.prototype);
                         },
                         prop: function(name, value) {
-                            return value ? (this.$ctor.prototype[name] = value) : this.$ctor.prototype[name];
+                            return value || value === '' ? (this.$ctor.prototype[name] = value) : this.$ctor.prototype[name];
                         },
                         fromConstructor: function() {
                             var args = [].slice.call(arguments);
@@ -595,6 +614,14 @@
                         },
                         to: function(type, fn) {
                             return this.map(this.klass(type).pure);
+                        },
+                        walk: function(f) {
+                            var ctor = this;
+                            while (ctor) {
+                                if (f(ctor) === true) break;
+                                else ctor = ctor.parent();
+                            }
+                            return ctor;
                         }
                     };
                     return this.ctor;
@@ -657,7 +684,7 @@
                             args.push(name, name);
                             return tmpl.filter(function(v, i) {
                                 return i < 6 || (i == 6 && id) || (i == 7 && ctor) || (i == 8 && level) || (i == 9 && superr) || i > 9;
-                            }).map(this.extract).join('');
+                            }).map(this.extract(unit)).join('');
                         }
                     }),
                     (function(text) {
@@ -810,7 +837,7 @@
                             return key && typeof key == 'string' && this.has(key) ? this._val[this._map[key]] : this.get(key);
                         }),
                         (function initial(key) {
-                            var ref = this._ref;
+                            var ref = this;
                             while (ref && ref instanceof this.constructor) {
                                 ref = ref._ref;
                             }
@@ -1449,44 +1476,68 @@
                         }
                     }),
                 // === parse, select, each === //
-                    (function $_parse($_keys, $_values) {
-                        function run(node, data, recur, ctor) {
-                            var keyss = $_keys(data), valss = $_values(data), value, key;
-                            while (keyss.length) {
-                                value = valss.shift(), key = keyss.shift();
-                                if (typeof value == 'object' && key != 'args') {
-                                    if (value instanceof Array && key == node._children) {
-                                        var items = node.node(key);
-                                        value.map(function(v) {
-                                            return items.child(v, ctor || node.constructor);
-                                        });
-                                    }else if (node.is(value)) {
-                                        node.set(value.cid(), value);                                   
-                                    }else if (value.constructor != Object && value instanceof sys.ctor.base) {
-                                        node.set(key.toKey(), value);
-                                    }else if (recur) {
-                                        run(node.child(key.toKey(), ctor), value, typeof recur == 'number' ? (recur - 1) : recur, ctor);
-                                    }else {
-                                        node.set(key.toKey(), value);
-                                    }
-                                }else if (typeof key == 'number' && value instanceof Array && value.length == 2 && typeof value[0] == 'string') {
-                                    node.set(value[0], value[1]);
+                    (function(set, plain, lazy, run, wrap) {
+                        return function $_parse($_keys, $_values) {
+                            return wrap(run(plain(set, $_keys, $_values), lazy(set)));
+                        }
+                    })(
+                        (function set(run, node, key, value, recur, ctor) {
+                            if (typeof value == 'object' && key != 'args') {
+                                if (value instanceof Array && key == node._children) {
+                                    var items = node.node(key);
+                                    value.map(function(v) {
+                                        return items.child(v, ctor || node.constructor);
+                                    });
+                                }else if (node.is(value)) {
+                                    node.set(value.cid(), value);                                   
+                                }else if (value.constructor != Object && value instanceof sys.ctor.base) {
+                                    node.set(key.toKey(), value);
+                                }else if (recur) {
+                                    run(node.child(key.toKey(), ctor), value, typeof recur == 'number' ? (recur - 1) : recur, ctor);
                                 }else {
-                                    node.set(key, value, false);
+                                    node.set(key.toKey(), value);
+                                }
+                            }else if (typeof key == 'number' && value instanceof Array && value.length == 2 && typeof value[0] == 'string') {
+                                node.set(value[0], value[1]);
+                            }else {
+                                node.set(key, value, false);
+                            }
+                        }),
+                        (function(set, $_keys, $_values) {
+                            return function plain(node, data, recur, ctor) {
+                                var keyss = $_keys(data), valss = $_values(data), value, key;
+                                while (keyss.length) {
+                                    set(plain, node, keyss.shift(), valss.shift(), recur, ctor);
+                                }
+                                return node;
+                            };
+                        }),
+                        (function(set) {
+                            return function lazy(node, data, recur, ctor) {
+                                return data.keys().reduce(function(r, k) {
+                                    set(lazy, r, k, data[k], recur, ctor);
+                                    return r;
+                                }, node);
+                            };
+                        }),
+                        (function(plain, lazy) {
+                            return function run(node, data, recur, ctor) {
+                                return typeof data == 'object' && data.constructor.name == 'Obj'
+                                    ? lazy(node, data, recur, ctor) : plain(node, data, recur, ctor);
+                            };
+                        }),
+                        (function(run) {
+                            return function() {
+                                var args = [].slice.call(arguments);
+                                if (args.length < 3 && args[args.length-1] instanceof Function) {
+                                    return run(this, args.shift(), false, args.pop());
+                                }else {
+                                    args.unshift(this);
+                                    return run.apply(undefined, args);
                                 }
                             }
-                            return node;
-                        };
-                        return function() {
-                            var args = [].slice.call(arguments);
-                            if (args.length < 3 && args[args.length-1] instanceof Function) {
-                                return run(this, args.shift(), false, args.pop());
-                            }else {
-                                args.unshift(this);
-                                return run.apply(undefined, args);
-                            }
-                        };
-                    }),
+                        })
+                    ),
                     (function $_select($_assign, $_keys) {
                         return function select(obj) {
                             return function select() {
@@ -1652,36 +1703,45 @@
             (function() {
                 return {
                     klass: function Node(opts) {
-                        this._id       = this.id();
-                        this._cid      = this.extractID(opts);
-                        this._cache    = {};
-                        this._started  = 2;
-                        this.start();
-
-                        if (opts.parent && this.is(opts.parent)) {
-                            this._parent = opts.parent;
-
-                            var store = this._parent.get(this._cid);
-                            if (store && this.test(store)) {
-                                this._store = store;
-                                this._store.ref(this);
-                            }else {
-                                this._store = this._parent._store.add(this._cid, this);
-                            }
-                            if (this._parent._events && this._parent._events._id != this._events._id) {
-                                this._events = this._parent._events;
-                            }
-
-                            this._level  = (this._parent._level  || (this._parent._level  = 0)) + 1;
-                            this._offset = (this._parent._offset || (this._parent._offset = 0)) + (opts.offset || 0);
-                        }else {
-                            this._store  = this._store;
-                            this._store.ref(this);
-                            this._level  = 0;
-                            this._offset = opts.offset || 0;
-                        }
+                        this.$$init(opts);
                     },
                     ext: [
+                        (function $$init(opts) {
+                            this._id       = this.ctor.$id = this.id();
+                            this._cid      = this.extractID(opts);
+                            this._cache    = {};
+                            this._started  = 2;
+                            this.start();
+
+                            if (opts.parent && this.is(opts.parent)) {
+                                this._parent = opts.parent;
+
+                                var store = this._parent.get(this._cid);
+                                if (store && this.test(store)) {
+                                    this._store = store;
+                                    this._store.ref(this);
+                                }else {
+                                    this._store = this._parent._store.add(this._cid, this);
+                                }
+                                if (this._parent._events && (!this._events || this._parent._events._id != this._events._id)) {
+                                    this._events = this._parent._events;
+                                }
+
+                                this._level  = (this._parent._level  || (this._parent._level  = 0)) + 1;
+                                this._offset = (this._parent._offset || (this._parent._offset = 0)) + (opts.offset || 0);
+                            }else {
+                                this._store  = this._store;
+                                this._store.ref(this);
+                                this._level  = 0;
+                                this._offset = opts.offset || 0;
+                            }
+                        }),
+                        (function connect() {
+                            this.listener = this.parent().listener;
+                            if (!this._events) this._events = this.parent()._events.child({ name: 'events', parent: this });
+                            if (!this.dispatcher) this.dispatcher = this.listener.run(this);
+                            return this;
+                        }),
                         (function children() {
                             return this.get(this.ctor.prop('_children')) || this.node(this.ctor.prop('_children'));
                         }),
@@ -1826,6 +1886,9 @@
                         (function object(k) {
                             return this._store.object(k);
                         }),
+                        (function bind(/* f, x, s */) {
+                            return this._store.bind.apply(this._store, arguments);
+                        }),
                         (function info(/* recur, opts */) {
                             return this._store.info.apply(this._store, arguments);
                         }),
@@ -1947,15 +2010,18 @@
                             }
                         }),
                         (function walk(run) {
-                            return function walk(key, callback) {
-                                var parts = typeof key == 'string' ? key.split('.') : key.slice(0);
-                                return run(parts, callback)(this.store());
+                            return function walk(/* key, callback */) {
+                                var args  = [].slice.call(arguments);
+                                var func  = args.pop();
+                                var node  = args.length ? this : this.parent();
+                                var parts = args.length ? (typeof args[0] == 'string' ? args.shift().split('.') : args.shift().slice(0)) : this.identifier(true);
+                                return run(parts, func)(node.store());
                             }
                         })(
                             (function walk(parts, callback) {
                                 return function next(node) {
-                                    var key = parts.shift();
-                                    var val = node.get(key);
+                                    var key = parts.first();
+                                    var val = key == 'parent' ? node.parent() : node.get(parts.shift());
                                     if (val) {
                                         if (callback(val, key, node)) {
                                             return val;
@@ -2031,18 +2097,20 @@
                         (function $$init(mv) {
                             this._x = mv;
                         }),
+                        (function $count(next, type) {
+                            next[type] = this[type]+'$';
+                            next['$$path'] = type+'<<'+(this._id || this.id)+this['$$path'];
+                            return next;
+                        }),
                         (function is(value) {
                             return value ? (value instanceof this.constructor || value.__ === this.__) : false;
-                        }),
-                        (function of() {
-                            return this.constructor.of.apply(this.constructor, [].slice.call(arguments));
                         }),
                         (function attr(name, value) {
                             this[name] = value;
                             return this;
                         }),
                         (function map(f) {
-                            return new this.constructor(this._x.map ? this._x.map(f) : f.call(this, this._x));
+                            return this.of(this._x.map ? this._x.map(f) : f.call(this, this._x));
                         }),
                         (function join() {
                             return this._x || this.mf || this._x || this._f || this._x;
@@ -2068,7 +2136,46 @@
                         (function pure(x) {
                             return new this(x);
                         })
-                    ]
+                    ],
+                    of: (function(_) {
+                        return _([].slice.call(arguments, 1));
+                    })(
+                        (function(args) {
+                            return args.shift().call(undefined, args.shift(), args.shift().call(undefined, args));
+                        }),
+                        (function(args, ofN) {
+                            return function of() {
+                                return this.$count(ofN(this, args(this, [].slice.call(arguments))), '$$of');
+                            }
+                        }),
+                        (function args(ctx, a) {
+                            if (a.length && typeof a[a.length-1] == 'string' && typeof ctx[a[a.length-1]] == 'string') a.pop();
+                            return a;
+                        }),
+                        (function($$_off) {
+                            return function ofN(ctx, args) {
+                                return $$_off[args.length].apply(ctx, args);
+                            }
+                        }),
+                        (function of0() {
+                            return new this.constructor();
+                        }),
+                        (function of1(x) {
+                            return new this.constructor(x);
+                        }),
+                        (function of2(x, y) {
+                            return new this.constructor(x, y);
+                        })
+                    ),
+                    init: function(type, klass, sys) {
+                        klass.prop('of', type.of);
+                        klass.prop('$$of',   '');
+                        klass.prop('$$map',  '');
+                        klass.prop('$$bind', '');
+                        klass.prop('$$path', '');
+                        klass.prop('$$run',  '');
+                        klass.prop('$$last', '');
+                    }
                 };
             }),
         // === Compose === //
@@ -2117,10 +2224,10 @@
                         return monad.ap(this);
                     }),
                     (function map(f) {
-                        return new this.constructor(this.$fn(this._x)(f));
+                        return this.of(this.$fn(this._x)(f));
                     }),
                     (function bimap(f, g) {
-                        return new this.constructor(this.$fn(this._x)(f)(g));
+                        return this.of(this.$fn(this._x)(f)(g));
                     }),
                     (function run(v) {
                         return this.chain(unit)(v);
@@ -2137,6 +2244,8 @@
         // === Cont === //
             (function() {
                 return {
+                    parent: 'Functor',
+                    extend: 'Compose',
                     klass: (function Cont(mv, mf) {
                         this.$super.call(this, mv, mf);
                     }),
@@ -2150,21 +2259,6 @@
                                 return f(t);
                             }
                         }),
-                        (function $count(curr, next, type) {
-                            next[type] = curr[type]+'$';
-                            next['$$path'] = type+'<<'+curr.id+curr['$$path'];
-                            return next;
-                        }),
-                        (function $cast(v, p) {
-                            if (v && this.is(v) && v.cont) {
-                                return v.$cont ? v.$cont() : v.cont();
-                            }else {
-                                return v && v instanceof Function
-                                    && (p || v.name.substr(-4) == 'cont'
-                                          || v.name.substr(-4) == 'pure'
-                                          || v.name == 'mf') ? v : this.constructor.val(v);
-                            }
-                        }),
                         (function $pure(f) {
                             return this.mf.name == this.constructor.prototype.mf.name ? f : this.$fn(this.mf)(f);
                         }),
@@ -2176,10 +2270,10 @@
                             }
                         }),
                         (function map(f) {
-                            return this.$count(this, new this.constructor(this.mv, this.$fn(this.$pure(this.$map(f)))(this.$cast)), '$$map');
+                            return this.of(this.mv, this.$fn(this.$pure(this.$map(f)))(this.$cast), '$$map');
                         }),
                         (function $bind(mv, mf) {
-                            return this.$count(this, new this.constructor(mv, this.$fn(mf)(this.$cast)), '$$bind');
+                            return this.of(mv, this.$fn(mf)(this.$cast), '$$bind');
                         }),
                         (function bind(f) {
                             return this.$bind(this.$cont(), f);
@@ -2266,13 +2360,20 @@
                             return value && value instanceof ctor ? true : false;
                         }
                     },
+                    $cast: function(v, p) {
+                        if (v && this.is(v) && v.cont) {
+                            return v.$cont ? v.$cont() : v.cont();
+                        }else {
+                            return v && v instanceof Function
+                                && (p || v.name.substr(-4) == 'cont'
+                                      || v.name.substr(-4) == 'pure'
+                                      || v.name == 'mf') ? v : this.constructor.val(v);
+                        }
+                    },
                     init: function(type, klass, sys) {
                         var proto     = klass.proto(), ctor = klass.$ctor;
-                        proto.$$map   = '';
-                        proto.$$bind  = '';
-                        proto.$$path  = '';
-                        proto.$$run   = '';
-                        proto.$cast   = proto.$cast.bind(proto);
+                        proto.$$cast  = type.$cast;
+                        proto.$cast   = type.$cast.bind(proto);
                         proto.cont    = type.cont;
                         proto.next    = unit;//this.get('root.process.nextTick.next');
                         proto.$cont   = type.$cont(ctor);
@@ -2291,12 +2392,8 @@
                         (function $$init(f) {
                             this._f = f;
                         }),
-                        (function $$meta(curr, next, type, value) {
-                            //curr.$context.parse({ curr: curr, next: next, type: type, value: value });
-                            return next;
-                        }),
                         (function of(f) {
-                            return this.$$meta(this, new this.constructor(f || unit), 'of');
+                            return this.$count(new this.constructor(f || unit), '$$of');
                         }),
                         (function ask() {
                             return this.of(unit);

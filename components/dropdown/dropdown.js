@@ -43,11 +43,9 @@ define(function() {
 						var trg = evt.target;
 						if (trg.classList.contains('dropdown-toggle')) { 
 							this.toggle(trg.closest('li'));
-							evt.stop = true;
 						}else {
 							var cls = trg.closest('.dropdown.open');
 							if (cls) cls.classList.remove('open');
-							evt.stop = true;
 						}
 					},
 					leave: function(evt) {

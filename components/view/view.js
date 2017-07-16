@@ -267,8 +267,23 @@ define(function() {
 					return this.get('attr') || this.set('attr', sys.get('utils.extend')({ id: 'v' + this.uid() }, this.tmpl('attr')));
 				},
 
-				style: function() {
-					return this.eff('style').run(this.render('style').run({}));
+				style: function(name) {
+					return this.lift(function(v, t) {
+						return t.bind(function(name) {
+							return v.eff('style').run(v.render(name).run({}));
+						}).run();
+					}).ap(this.maybe(this.parent().deps('templates')).map(function(tmpls) {
+						return tmpls.bind(function(o, v, k) {
+							if (v && v.isStore) {
+	                            var keys = sys.get('link.idx.valueMap').run('scripts', 'style.' + k, true);
+								return keys.filter(function(x) {
+									return (!o[x] && (o[x] = 1)) || !o[x]++;
+								});
+							}else {
+								return v;
+							}
+						}).flatten();
+					}));
 				},
 
 				type: function() {

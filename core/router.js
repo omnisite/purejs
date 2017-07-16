@@ -248,6 +248,7 @@ define(function() {
 					init: function(type, klass, sys) {
 						var lstr = this.find('Listener').$ctor;
 						var root = klass.prop('root', sys.root.child('router', klass.$ctor));
+						klass.prop('_events', sys.get('events').child({ name: 'events', parent: root }));
 						klass.prop('listener', lstr.init('router', 'store'));
 						klass.prop('dispatcher', klass.prop('listener').run(root));
 

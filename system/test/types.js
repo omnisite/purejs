@@ -1,5 +1,5 @@
 define(function() {
-	return sys().enqueue({
+	return this.enqueue({
 
 		name: 'system.test.types',
 
@@ -12,10 +12,11 @@ define(function() {
 	}, function() {
 
 		return {
-			init: function(deps) {
+			ext: {
+				origin: function(plural) {
 
-				return this;
-
+					return 'system';
+				}
 			},
 			control: {
 
@@ -29,7 +30,7 @@ define(function() {
 
 					base: function() {
 
-						var tst1 = sys.load('loc').run('types.type').find('Cont').of('erik')
+						var tst1 = sys.get('types.type').find('Cont').of('erik')
 
 						var tst2 = tst1.map(function(x) {
 						  var y = [x,x];

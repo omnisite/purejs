@@ -2,8 +2,10 @@
   <ul{{? it.class }} class="{{=it.class}}"{{?}} data-id="#{{=it.id}}"></ul>
 </script>
 <script id="item" type="text/template">
-  <li>
-  	<a href="#{{=it.id}}">{{=it.name}}</a>
+  <li{{? it.class }} class="{{=it.class}}"{{?}}>
+  	<a {{? it.href }}href="{{=it.href}}" data-id="{{=it.id}}"{{??}}href="#{{=it.id}}"{{?}}>
+  		{{? it.glyph }}<span class="glyphicon {{=it.glyph}}"></span>{{??}}{{=it.name}}{{?}}
+  	</a>
   </li>
 </script>
 <script id="dropdown" type="text/template">
