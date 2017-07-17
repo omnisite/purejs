@@ -2765,8 +2765,8 @@
                         }),
                         (function make(cont) {
                             this._cont || (this._cont = cont.bind(this.comp(function(klass) {
-                                var loca = sys.get('script').get(this.deps('name'))
-                                        || sys.get('script').get(this.origin(true), this.get('type'), this.get('type'));
+                                var loca = sys.get('assets').get(this.deps('name'))
+                                        || sys.get('assets').get(this.origin(true), this.get('type'), this.get('type'));
                                 if (!loca.get('js')) loca.set('js', this.cell()).set(this.constructor);
 
                                 if (this.conf.events)  this.data({ events: this.conf.events });
@@ -2785,12 +2785,12 @@
                             return cell.kont();
                         }),
                         (function component(ref, type) {
-                            var path = ref.split('.');
-                            var name = path.pop();
+                            var path = type ? type.split('.') : ref.split('.');
+                            var name = ref;
                             var comp = this.get(name);
                             if (!comp) {
-                                var cmps = this.deps(path.length ? path.shift() : 'components');
-                                var code = type || name;
+                                var cmps = this.deps(path.length > 1 ? path.shift() : 'components');
+                                var code = path.length ? path.join('.') : name;
                                 if (cmps[code]) {
                                     comp = this.set(name, cmps[code].create({ name: name, parent: this })); 
                                 }else if (cmps['$'+code]) {
@@ -3264,7 +3264,7 @@
         (function() {
             define(function() {
                 return this.klass('Cont').of(this, function(sys) {
-                    var store = sys.get('script.core').store();
+                    var store = sys.get('assets.core').store();
                     var user  = sys.get().child('user', sys.klass('User').$ctor);
                     return store.get('effect.cont').bind(function() {
                         return Array.of(

@@ -307,7 +307,7 @@
                                 return test;
                             }
                         }else {
-                            if ((node = sys.get('script').get(test.name) || require(test))) {
+                            if ((node = sys.get('assets').get(test.name) || require(test))) {
                                 if (!test.name || test.name.slice(-4) != 'json') {
                                     cont = node.get('cont');
                                     if (cont) return cont;
@@ -329,17 +329,17 @@
                         path = def.name.split('.');
                         type = path.first();
                         if (path.length == 1) {
-                            if (node = sys.get('script').get('components', path, path.last())) {
+                            if (node = sys.get('assets').get('components', path, path.last())) {
                                 return node;
-                            }else if (node = sys.get('script').get('libs', path)) {
+                            }else if (node = sys.get('assets').get('libs', path)) {
                                 return node;
                             }
-                        }else if (type == 'modules' || type == 'lsibs') {
+                        }else if (type == 'modules') {
                             path.append(path.last());
                         }else if (path.last() == 'json') {
-                            return sys.get('script').get('json', path.slice(0, -1));
+                            return type == 'config' ? sys.get('assets').get('config', path) : sys.get('assets').get('json', path.slice(0, -1));
                         }
-                        return sys.get('script').get(path);
+                        return sys.get('assets').get(path);
                     }else {
                         head = document.getElementsByTagName('head').item(0).getElementsByTagName('script');
                         tag  = head.item(head.length-1);
@@ -1016,7 +1016,7 @@
                             (function(recur) {
                                 return function(x) {
                                     var o = x && x['$$'] ? x.value : x;
-                                    return o && o.vals && o.length() ? (recur ? o.map(function(v, k, i, o) {
+                                    return o && o.isStore && o.vals && o.length() ? (recur ? o.map(function(v, k, i, o) {
                                         return o.object(k);
                                     }) : o.parent().object(o.cid())) : x;
                                 }
@@ -1490,7 +1490,7 @@
                                     });
                                 }else if (node.is(value)) {
                                     node.set(value.cid(), value);                                   
-                                }else if (value.constructor != Object && value instanceof sys.ctor.base) {
+                                }else if (value.constructor != Object && value.constructor.name != 'Obj' && value instanceof sys.ctor.base) {
                                     node.set(key.toKey(), value);
                                 }else if (recur) {
                                     run(node.child(key.toKey(), ctor), value, typeof recur == 'number' ? (recur - 1) : recur, ctor);
@@ -2815,7 +2815,7 @@
         (function $$APP(enq, run) {
             var sys = this.get('sys');
             if (sys.isWorker) return;
-            return run.call(enq(sys), sys.get('async.script'), this.store().ensure('script.core').store());
+            return run.call(enq(sys), sys.get('async.script'), this.store().ensure('assets.core').store());
         }),
         (function(sys) {
             function enqueue(deps, run) {

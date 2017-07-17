@@ -720,241 +720,11 @@
                         type: 'IO',
                         path: 'io',
                         request: [
-                            (function script() {
-                                return [].slice.call(arguments).apply();
-                            })(
-                                (function(maps, request, loader, wrap, set, extend, tmpl, json, cont) {
-                                    return function script() {
-                                        var klass = this.klass('Cont'), value = this.klass('Value');
-                                        return cont(wrap(maps(
-                                            this.get('effects.io.request').node('maps').store().parse({
-                                                cont: klass, value: value,
-                                                cell: this.klass('Cell').of,
-                                                set: set, extend: extend,
-                                                unit: this.fn.$const(unit),
-                                                tmpl: tmpl, json: json,
-                                                request: request.call(this).$ctor,
-                                                loader: loader.call(this).$ctor,
-                                                store: this.get().child('script')
-                                            }))
-                                        ));
-                                    }
-                                }),
-                                (function maps($_make, $_link) {
-                                    return function(store) {
-                                        return $_link($_make.call(store));
-                                    }
-                                })(
-                                    (function make() {
-                                        this.link('valueMap').add('hndl', {
-                                            components: 'extend',
-                                            modules: 'extend',
-                                            system: 'extend',
-                                            types: 'extend',
-                                            tmpl: 'tmpl',
-                                            json: 'json'
-                                        }, 'unit');
-                                        this.link('valueMap').add('engs', {
-                                            components: 'loader',
-                                            system: 'loader',
-                                            modules: 'loader',
-                                            types: 'loader',
-                                            tmpl: 'request',
-                                            libs: 'loader',
-                                            core: 'loader'
-                                        }, 'loader');
-                                        this.set('valueMap', this.link('valueMap'));
-                                        return this.select('store', 'cell', 'set', 'cont', 'value', 'valueMap');
-                                    }),
-                                    (function link(base) {
-                                        var node  = base.store;
-                                        var link  = node.link('valueMap').add('scripts', {
-                                            'tmpl':  {}, 'style': {}
-                                        }, 'tmpl', 'tmpl');
-                                        base.meta = link.get('scripts.map');
-                                        return base;
-                                    })
-                                ),
-                                (function request() {
-                                    return this.klass('Cont').extend(
-                                        function RequestCont(mv, mf) {
-                                            this.$super.call(this, mv, mf);
-                                        }, {
-                                            mf: function(loc) {
-                                                return sys.get('async.request')(loc);
-                                            }
-                                        }, {
-                                            of: function(loc, res) {
-                                                return new this(loc).run(res);
-                                            }
-                                        }
-                                    );
-                                }),
-                                (function loader() {
-                                    return this.klass('Cont').extend(
-                                        function ComponentCont(mv, mf) {
-                                            this.$super.call(this, mv, mf);
-                                        }, {
-                                            mf: function mf(tag) {
-                                                return function $_pure(k) {
-                                                    k(sys.find(tag.getAttribute('data-ref')).get('cont'));
-                                                };
-                                            }
-                                        }, {
-                                            of: function(loc, res) {
-                                                if (loc == 'pure') {
-                                                    return this.prototype._.of(sys).run(res);
-                                                }else if (loc.lazy) {
-                                                    var cont = new this(sys.get('async.script')(loc));
-                                                    cont.attr('ref', loc.ref);
-                                                    cont.attr('url', loc.url);
-                                                    cont.attr('name', loc.url.split('.').shift().split('/').pop());
-
-                                                    return cont.$value().run(res);
-                                                }else {
-                                                    var cont = new this(sys.get('async.script')(loc));
-                                                    return cont.run(res);
-                                                }
-                                            }
-                                        }
-                                    );
-                                }),
-                                (function(code, link) {
-                                    return function wrap(base) {
-                                        return code(base);
-                                    }
-                                })(
-                                    (function wrap(base) {
-                                        return function script(info) {
-                                            var location = typeof info == 'object' ? info.url : info;
-                                            var full = location.replace('.json', '/json').split('.');
-                                            var path = full.first().split('/');
-                                            var ext  = (full.length > 1 || full.push('js')) && (path.first() == 'components' && path.last() == 'json' ? path.pop() : full.last());
-                                            var type = ext == 'tmpl' || ext == 'json' ? ext : path.first();
-                                            var node = info.ref ? base.store.find(info.ref) : base.store.ensure([ type, path.last().replace(/\$/g, '') ]);//path.slice(0, 2).join('.').replace(/\$/g, ''));
-                                            var cell = node ? node.get(ext) : undefined;
-                                            if (!cell) {
-                                                var lazy = path.last().slice(0, 1) == '$' ? true : false;
-                                                var loca = (lazy ? '$' : '') + ext;
-                                                cell = node.get(loca);
-                                                if (!cell) {
-                                                    cell = node.set(loca, base.cell());
-                                                    base.valueMap.run('engs', type).of({
-                                                        url: location,
-                                                        ref: node.uid(),
-                                                        lazy: lazy
-                                                    }, base.set(
-                                                        base.cont.$ctor,
-                                                        cell,
-                                                        base.valueMap.run('hndl', type)(node, base.meta),
-                                                        base.value
-                                                    ));
-                                                }
-                                            };
-                                            return cell;
-                                        }
-                                    })
-                                ),
-                                (function set(cont, cell, map, value) {
-                                    return function $set(result) {
-                                        if (cont.is(result)) {
-                                            result.run($set);
-                                        }else if (value.is(result)) {
-                                            cell.set(result.resolve(map));
-                                        }else {
-                                            cell.set(map(result));
-                                        }
-                                    }
-                                }),
-                                (function extend(ext) {
-                                    var xtnd = sys.store('utils.extend');
-                                    var deps = sys.klass('Deps');
-                                    return function(store) {
-                                        var name = store.get('type') || store.cid().toCamel();
-                                        return ext(xtnd, deps, sys.klass(name) || sys.klass('Component').extend(name));                                      
-                                    }
-                                })(
-                                    (function extend(xtnd, deps, comp) {
-                                        return function $ext(result) {
-
-                                            if (!result.ext) result.ext = {};
-                                            if (result.parent) {
-                                                comp.inherit(comp.$ctor, result.parent);
-                                            }
-                                            if (result.deps) {
-                                                if (result.ext instanceof Array) {
-                                                    result.ext.push({ name: 'deps', value: deps.of(result.deps) });
-                                                }else if (result.deps) {
-                                                    result.ext.deps = deps.of(result.deps);
-                                                }
-                                            }
-                                            comp.ext(result.ext);
-
-                                            var conf = comp.prop('conf', xtnd({}, comp.prop('conf')));
-                                            if (result.events) {
-                                                conf.events  = comp.update(conf.events,  result.events, true);
-                                            }
-                                            if (result.proxy) {
-                                                conf.proxy   = comp.update(conf.proxy,   result.proxy, true);
-                                            }
-                                            if (result.control) {
-                                                conf.control = comp.update(conf.control, result.control, true);
-                                            }
-                                            if (result.opts) {
-                                                conf.opts    = xtnd(xtnd({}, conf.opts    || {}), result.opts);
-                                            }else {
-                                                conf.opts    = xtnd({}, conf.opts || {});
-                                            }
-                                            if (result.data) {
-                                                conf.data    = xtnd(xtnd({}, conf.data    || {}), result.data);
-                                            }else {
-                                                conf.data    = xtnd({}, conf.data || {});
-                                            }
-                                            if (result.tmpl) {
-                                                xtnd(conf.data || (conf.data = {}), { tmpl: result.tmpl });
-                                            }
-
-                                            return comp.$ctor;
-                                        };
-                                    })
-                                ),
-                                (function tmpl(node, meta) {
-                                    return function(template) {
-                                        var elem = document.createElement('div');
-                                        elem.innerHTML = template;
-                                        var store = node.store(), ref;
-                                        var $curr, $prev, $node, $uid = store.cid();
-                                        while (elem.firstElementChild && (ref = elem.firstElementChild)) {
-                                            $curr = ref.id == 'style' ? 'style' : (ref.getAttribute('data-type') || 'tmpl');
-                                            if ($curr != $prev) $node = meta.get($curr);
-                                            store.set(ref.id, ref.innerHTML.trim()); elem.removeChild(ref);
-                                            $node.push($uid, ref.id, true);
-                                        };
-                                        return store;
-                                    }
-                                }),
-                                (function json(node, meta) {
-                                    return function(json) {
-                                        return node.klass('Obj').of(json);
-                                    }
-                                }),
-                                (function cont(make) {
-                                    return function script(location) {
-                                        return sys.klass('Cont').of(location).bind(function(loc) {
-                                            return function $_pure(k) {
-                                                make(loc).get(k);
-                                            }
-                                        });
-                                    }
-                                })
-                            ),
                             (function style(src) {
                                 var fullsrc = src.split('.').append('css').slice(0, 2).join('.');
                                 var headref = document.getElementsByTagName('head').item(0);
                                 var fileref = headref.querySelector('[href="'+fullsrc+'"]');
-                                if (fileref) {
-                                    //console.log('!SKIP!', fullsrc);
-                                }else {
+                                if (!fileref) {
                                     fileref = document.createElement('link');
                                     fileref.setAttribute('rel', 'stylesheet');
                                     fileref.setAttribute('type', 'text/css');
@@ -1015,7 +785,7 @@
                                     document.getElementsByTagName('head').item(0).getElementsByTagName('script')).filter(function(s) {
                                         return s.src.indexOf(def.name.replace(/\./g, '/')) >= 0;
                                     });
-                                    var result = script.length ? sys.find(script.first().getAttribute('data-ref')) : sys.get('script', def.name);
+                                    var result = script.length ? sys.find(script.first().getAttribute('data-ref')) : sys.get('assets', def.name);
                                     return result && key ? result.get(key) : result;
                                 })
                             ),
@@ -1023,14 +793,9 @@
                                 return function enqueue() {
                                     var eff = this.get('sys.eff');
                                     return makeWrap(makeOf({
-                                        scripts: eff('io.request.script').init(),
                                         components: eff('sys.loader.component').init(),
-                                        modules: eff('sys.loader.component').init(),
-                                        types: eff('io.request.script').init(),
                                         styles: eff('io.request.style').init(),
                                         css: eff('io.request.style').init(),
-                                        templates: eff('io.request.script').init(),
-                                        json: eff('io.request.script').init(),
                                         pure: this.fn.pure
                                     }, this.klass('Obj'), makeBind, makeSetRes, makeResult), this.klass('Obj'), eff('sys.loader.detect').init());
                                 }
@@ -1066,15 +831,15 @@
                                                 var args = def instanceof Array ? def : [ def ];
                                                 var name = args.shift(), opts = args.length ? args.shift() : { js: true };
                                                 var code = name.replace('.', '/');
-                                                var path = loc + '/' + (name.indexOf('/') > 0 ? name : (name + '/' + name));
+                                                var path = loc + '/' + (code.indexOf('/') > 0 ? code : (code + '/' + code));
                                                 var attr = k == 'parent' ? k : name;
-                                                return res[attr] = (eff[loc] || eff['components']).run(path).bind(set(res, attr)).cont();
+                                                return res[attr] = eff.components.run(path).bind(set(res, attr)).cont();
                                             });
                                         }else if (k == 'core' || k == 'helpers' || k == 'config') {
                                             var res = r[k] = r.of({});
                                             return v.map(function(name) {
                                                 return name == 'pure' ? sys.store('sys.$fn.pure')((res[name] = sys.pure()))
-                                                    : eff.scripts.run(k + '/' + name).bind(set(res, name)).cont();
+                                                    : eff.components.run(k + '/' + name).bind(set(res, name)).cont();
                                             });
                                         }else if (k == 'scripts' || k == 'json' || k == 'css' || k == 'styles' || k == 'templates') {
                                             var res = r[k] = r.of({});
@@ -1088,7 +853,7 @@
                                                     if (path.length < 2) path.unshift('libs');
                                                     if (path.length < 3) path.push(name);
                                                 }
-                                                return eff[k].run(path.join('/')).bind(set(res, name)).cont();
+                                                return (eff[k] || eff['components']).run(path.join('/')).bind(set(res, name)).cont();
                                             });
                                         }
                                         return v;
@@ -1165,33 +930,34 @@
                                     })
                                 )
                             ),
-                            (function(wrap, parse, obj) {
-
+                            (function(map, wrap, parse, eng, obj) {
                                 var base = { bind: sys.get('binds.make') };
                                 var link = sys.get('link').make('parser', 'valueMap', parse.call(base)).add('parser', {}, 'base');
-                                var load = sys.get('link').make('loader', 'valueMap', obj.call(sys)).add('loader', {}, 'base');
-                                return wrap(sys.klass('Coyoneda'), link);
+                                sys.get('link').make('loader', 'valueMap', obj.call(sys)).add('loader', {}, 'base');
+                                sys.get('link').make('engine', 'valueMap', eng.call(sys)).add('engine', {
+                                    base: 'loader', tmpl: 'request'
+                                }, 'base').add('handler', {
+                                    components: 'extend', modules: 'extend', system: 'extend',
+                                    types: 'extend', tmpl: 'tmpl', json: 'json'
+                                }, 'unit').add('scripts', {
+                                    'tmpl':  {}, 'style': {}
+                                }, 'tmpl', 'tmpl');
+                                return map.call({ wrap: wrap, loader: sys.klass('Coyoneda').of(link.run('base'), 'loader') });
                             })(
-                                (function(init, wrap) {
-                                    return function(klass, load) {
-                                        return wrap(init.call({ klass: klass, load: load }));
+                                (function() {
+                                    return this.wrap(this.loader, this.loader.map(function(x) {
+                                        return function(v) {
+                                            return x(v).cont().bind(function(r) {
+                                                return r.result;
+                                            });
+                                        };
+                                    }));
+                                }),
+                                (function(loader, mapped) {
+                                    return function base(ref) {
+                                        return ref ? mapped.run(ref) : loader;
                                     }
-                                })(
-                                    (function() {
-                                        return this.klass.of(this.load.run('base'), 'loader').map(function(x) {
-                                            return function(v) {
-                                                return x(v).cont().bind(function(r) {
-                                                    return r.result;
-                                                });
-                                            };
-                                        });
-                                    }),
-                                    (function(loader) {
-                                        return function base() {
-                                            return loader;
-                                        }
-                                    })
-                                ),
+                                }),
                                 (function() {
                                     return {
                                         base: this.bind('store')('fold', function(r, v, k, i, o) {
@@ -1214,65 +980,239 @@
                                     };
                                 }),
                                 (function() {
+                                    return {
+                                        unit: this.run().fn.$const(unit),
+                                        request: this.klass('Cont').extend(
+                                            function RequestCont(mv, mf) {
+                                                this.$super.call(this, mv, mf);
+                                            }, {
+                                                mf: function(loc) {
+                                                    return sys.get('async.request')(loc);
+                                                }
+                                            }, {
+                                                of: function(loc, res) {
+                                                    return new this(loc).run(res);
+                                                }
+                                            }
+                                        ),
+                                        loader: this.klass('Cont').extend(
+                                            function ComponentCont(mv, mf) {
+                                                this.$super.call(this, mv, mf);
+                                            }, {
+                                                mf: function mf(tag) {
+                                                    return function $_pure(k) {
+                                                        k(sys.find(tag.getAttribute('data-ref')).get('cont'));
+                                                    };
+                                                }
+                                            }, {
+                                                of: function(loc, res) {
+                                                    if (loc == 'pure') {
+                                                        return this.prototype._.of(sys).run(res);
+                                                    }else if (loc.lazy) {
+                                                        var cont = new this(sys.get('async.script')(loc));
+                                                        cont.attr('ref', loc.ref);
+                                                        cont.attr('url', loc.url);
+                                                        cont.attr('name', loc.url.split('.').shift().split('/').pop());
+
+                                                        return cont.$value().run(res);
+                                                    }else {
+                                                        var cont = new this(sys.get('async.script')(loc));
+                                                        return cont.run(res);
+                                                    }
+                                                }
+                                            }
+                                        ),
+                                        extend: (function(ext) {
+                                            var xtnd = sys.store('utils.extend');
+                                            var deps = sys.klass('Deps');
+                                            return function(store) {
+                                                var name = store.get('type') || store.cid().toCamel();
+                                                return ext(xtnd, deps, sys.klass(name) || sys.klass('Component').extend(name));                                      
+                                            }
+                                        })(
+                                            (function extend(xtnd, deps, comp) {
+                                                return function $ext(result) {
+
+                                                    if (!result.ext) result.ext = {};
+                                                    if (result.parent) {
+                                                        comp.inherit(comp.$ctor, result.parent);
+                                                    }
+                                                    if (result.deps) {
+                                                        if (result.ext instanceof Array) {
+                                                            result.ext.push({ name: 'deps', value: deps.of(result.deps) });
+                                                        }else if (result.deps) {
+                                                            result.ext.deps = deps.of(result.deps);
+                                                        }
+                                                    }
+                                                    comp.ext(result.ext);
+
+                                                    var conf = comp.prop('conf', xtnd({}, comp.prop('conf')));
+                                                    if (result.events) {
+                                                        conf.events  = comp.update(conf.events,  result.events, true);
+                                                    }
+                                                    if (result.proxy) {
+                                                        conf.proxy   = comp.update(conf.proxy,   result.proxy, true);
+                                                    }
+                                                    if (result.control) {
+                                                        conf.control = comp.update(conf.control, result.control, true);
+                                                    }
+                                                    if (result.opts) {
+                                                        conf.opts    = xtnd(xtnd({}, conf.opts    || {}), result.opts);
+                                                    }else {
+                                                        conf.opts    = xtnd({}, conf.opts || {});
+                                                    }
+                                                    if (result.data) {
+                                                        conf.data    = xtnd(xtnd({}, conf.data    || {}), result.data);
+                                                    }else {
+                                                        conf.data    = xtnd({}, conf.data || {});
+                                                    }
+                                                    if (result.tmpl) {
+                                                        xtnd(conf.data || (conf.data = {}), { tmpl: result.tmpl });
+                                                    }
+
+                                                    return comp.$ctor;
+                                                };
+                                            })
+                                        ),
+                                        tmpl: function(node, meta) {
+                                            return function(template) {
+                                                var elem = document.createElement('div');
+                                                elem.innerHTML = template;
+                                                var store = node.store(), ref;
+                                                var $curr, $prev, $node, $uid = store.cid();
+                                                while (elem.firstElementChild && (ref = elem.firstElementChild)) {
+                                                    $curr = ref.id == 'style' ? 'style' : (ref.getAttribute('data-type') || 'tmpl');
+                                                    if ($curr != $prev) $node = meta.get($curr);
+                                                    store.set(ref.id, ref.innerHTML.trim()); elem.removeChild(ref);
+                                                    $node.push($uid, ref.id, true);
+                                                };
+                                                return store;
+                                            }
+                                        },
+                                        json: function(node, meta) {
+                                            return function(json) {
+                                                return node.klass('Obj').of(json);
+                                            }
+                                        }
+                                    };
+                                }),
+                                (function() {
                                     return this.klass('Obj').of({
                                         init: {
                                             base: function(ref) {
                                                 return typeof ref == 'object' ? ref : { ref: ref };
                                             }
                                         },
+                                        full: {
+                                            base: function(v) {
+                                                v.full = v.ref.replace('.json', '/json').split('.');
+                                                return v;
+                                            }
+                                        },
                                         path: {
                                             base: function(v) {
-                                                v.path = v.ref.replace('.', '/').split('/');
+                                                v.path = v.full.first().split('/');
                                                 return v;
                                             }
                                         },
                                         name: {
                                             base: function(v) {
-                                                v.name = v.path.length > 3 ? v.path.pop() : v.path.last();
+                                                v.name = v.full.length > 3 ? v.full.pop() : v.path.last();
                                                 return v;
                                             }
                                         },
-                                        ctor: {
-                                            $$map: function(v) {
-                                                var k  = v.path ? v.path.first() : 'base';
-                                                v.ctor = this[k] || this['base'];
-                                                return v;
-                                            },
-                                            base: 'Component',
-                                            modules: 'Module',
-                                            system: 'System',
-                                            types: 'Types'
-                                        },
-                                        node: {
+                                        ext: {
                                             base: function(v) {
-                                                v.path = (v.ref = v.path.join('/')).replace(/\$/g, '').split('/');
-                                                v.node = sys.get('script').get(v.path) || sys.get('script').ensure(v.path);
+                                                v.ext  = (v.full.length > 1 || v.full.push('js')) && (v.path.first() == 'components' && v.path.last() == 'json' ? v.path.pop() : v.full.last());
                                                 return v;
                                             }
                                         },
                                         type: {
                                             base: function(v) {
-                                                v.type = v.node.set('type', v.name.toCamel());
+                                                if (v.ext == 'tmpl' || v.ext == 'json') {
+                                                    v.type = v.ext;
+                                                    v.path = [ v.type ].concat(v.path.slice(1));
+                                                }else {
+                                                    v.type = v.path.first();
+                                                }
                                                 return v;
                                             }
+                                        },
+                                        node: {
+                                            node: function(path) {
+                                                return sys.get('assets').get(path) || sys.get('assets').ensure(path)
+                                            },
+                                            path: function(type, path) {
+                                                return type == 'libs' || type == 'json' ? path.slice(0, 2) : path;
+                                            },
+                                            base: function(v) {
+                                                v.node = this.node(this.path(v.type, v.path.join('/').replace(/\$/g, '').split('/')));
+                                                v.loca = v.path.length == 3 || v.type == 'core' || v.type == 'helpers' || v.type == 'libs' ? v.ref : [ v.type, v.name, v.name ].join('/');
+                                                v.name = v.node.set('type', v.name.toCamel());
+                                                return v;
+                                            }
+                                        },
+                                        ctor: {
+                                            $$map: function(v) {
+                                                v.ctor = this[v.type] || this['base'];
+                                                return v;
+                                            },
+                                            base: 'Component',
+                                            modules: 'Module',
+                                            system: 'System',
+                                            types: 'Types',
+                                            config: 'Obj'
                                         },
                                         comp: {
                                             base: function(v) {
                                                 var ctor = sys.klass(v.ctor);
                                                 if (!ctor) ctor = sys.klass('$ctor').extend(v.ctor);
-                                                v.comp = ctor.extend(v.type);
+                                                v.comp = ctor.extend(v.name);
                                                 return v;
                                             }
                                         },
-                                        loca: {
+                                        cell: {
+                                            cell: this.klass('Cell').of,
+                                            cont: this.klass('Cont').$ctor,
+                                            vmap: this.get('link.idx.valueMap'),
+                                            vals: this.klass('Value'),
+                                            next: function(cont, cell, map, value) {
+                                                return function $set(result) {
+                                                    if (cont.is(result)) {
+                                                        result.run($set);
+                                                    }else if (value.is(result)) {
+                                                        cell.set(result.resolve(map));
+                                                    }else {
+                                                        cell.set(map(result));
+                                                    }
+                                                }
+                                            },
                                             base: function(v) {
-                                                v.loca = v.path.length == 3 ? v.ref : [ v.ctor == 'Module' ? 'modules' : 'components', v.name, v.name ].join('/');
+                                                v.cell = v.node.get(v.ext);
+                                                if (!v.cell) {
+                                                    var lazy = v.path.last().slice(0, 1) == '$' ? true : false;
+                                                    var loca = (lazy ? '$' : '') + v.ext;
+                                                    v.cell = v.node.get(loca);
+                                                    if (!v.cell) {
+                                                        v.cell = v.node.set(loca, this.cell());
+                                                        this.vmap.run('engine', v.type).of({
+                                                            url: v.loca,
+                                                            ref: v.node.uid(),
+                                                            lazy: lazy
+                                                        }, this.next(
+                                                            this.cont,
+                                                            v.cell,
+                                                            this.vmap.run('handler', v.type)(v.node, this.meta || (this.meta = this.vmap.get('scripts.map'))),
+                                                            this.vals
+                                                        ));
+                                                    }
+                                                };
                                                 return v;
                                             }
                                         },
                                         cont: {
                                             base: function(v) {
-                                                v.cont = sys.get('sys.eff')('io.request.script').run({ url: v.loca, ref: v.node.uid(), type: v.type });
+                                                v.cont = v.cell.kont();
                                                 return v;
                                             }
                                         },
@@ -1315,7 +1255,7 @@
                             })(
                                 (function(base) {
                                     return function component(ref, create) {
-                                        return base.run().run(typeof ref == 'object' ? ref : { ref: ref, create: create });
+                                        return base.run(typeof ref == 'object' ? ref : { ref: ref, create: create });
                                     }
                                 }),
                                 (function() {
@@ -1327,16 +1267,7 @@
                                         });
                                     });
                                 })
-                            ),
-                            (function module(name) {
-                                return sys.get('sys.eff')('io.request.script').run([ 'modules', name, name ].join('/'));
-                            }),
-                            (function model(name) {
-                                return sys.get('sys.eff')('io.request.script').run([ 'model', name, name ].join('/'));
-                            }),
-                            (function type(name) {
-                                return sys.get('sys.eff')('io.request.script').run([ 'types', name, name ].join('/'));
-                            })
+                            )
                         ],
                         factory: {
                             loader: {
