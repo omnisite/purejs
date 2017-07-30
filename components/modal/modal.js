@@ -29,9 +29,9 @@ define(function() {
 					this.set('data.tmpl.footer', find.ap('.modal-footer'));
 				},
 				backdrop: function() {
-					return this.view().append('div', {'class':'modal-backdrop fade'}, 'body')
+					return this.view().append('div', {'class':'modal-backdrop fade','style':'top:100%'}, 'body')
 					.toIO().nest().lift(function(el, fn) {
-					 	return el.of({ $el: el, toggle: el.ctor.lift(fn(el.pure().run(), document.body, el.fx(function(arr) {
+					 	return el.of({ $el: el, toggle: el.ctor.lift(fn(el.run(), document.body, el.fx(function(arr) {
 							return arr.map(function(id, idx) {
 								var elem = document.getElementById(id);
 								elem.style.zIndex = 1050+idx;
@@ -41,7 +41,7 @@ define(function() {
 							});
 						}))) });
 					}).ap(function(bdrp, body, mdls) {
-						var transitionEnd = sys.run().eff('dom.easing.transitionEnd').init();
+						var transitionEnd = sys.eff('dom.easing.transitionEnd').init();
 						var reqAnimFrame  = sys.get('process.animFrame.enqueue');
 						var modalsOpen    = [];
 						return function(elem, action) {
@@ -109,8 +109,6 @@ define(function() {
 				main: {
 					click: function(evt) {
 						if (evt.value == 'close') this.root().hide();
-						if ((evt.currentTarget || (evt.currentTarget = evt.target)))
-							this.root().$proxy(evt, this.root().get('proxy', evt.type, evt.currentTarget.localName));
 					},
 					initButton: function(value, text, style) {
 						return { value: value, text: text || value, style: style || '' };
@@ -122,8 +120,8 @@ define(function() {
 						return this.makeButton(this.initButton(value, text, style));
 					},
 					createForm: function(name, fields) {
-						return this.root().component(name, 'form').run(function(f) {
-							f.control('main').fields('data.main', fields);
+						return this.root().component(name, 'form').once(function(f) {
+							f.control('main').fields(fields, 'data.main');
 							f.attach(f.parent('data.tmpl.body'));
 							return f;
 						});
@@ -139,12 +137,6 @@ define(function() {
 					}
 				},
 				data: {
-					header: function(evt) {
-						console.log(evt);
-					},
-					content: function(evt) {
-						console.log(evt);
-					},
 					button: function(evt) {
 						var root = this.root();
 						var view = root.view();
@@ -159,22 +151,16 @@ define(function() {
 							if (btn.$el) btn.$el.parentElement.removeChild(btn.$el);
 							return btn;
 						}
-					},
-					footer: function(evt) {
-
 					}
 				}
 			},
-
 			tmpl: {
 
 				attr: function() {
 
 					return { 'class' : 'modal no-scroll', 'role' : 'dialog' };
 				}
-
 			},
-
 			data: {
 
 				main: {
@@ -188,18 +174,16 @@ define(function() {
 					buttons: {}
 
 				}
-
 			},
 			events: {
 				dom: {
 					'click:button': 'data.control.main.click',
-					'click:.close': 'hide'
+					'click:.close': 'hide',
+					'change:[data-bind-path]': 'binding'
 				},
 				data: {
 					'change:data.main.%'         : 'binding',
-					'change:data.main.header.%'  : 'data.control.data.header',
-					'change:data.main.footer.%'  : 'data.control.data.footer',
-					'change:data.main.buttons.%' : 'data.control.data.button',
+					'change:data.main.buttons.%' : 'data.control.data.button'
 				}
 			}
 

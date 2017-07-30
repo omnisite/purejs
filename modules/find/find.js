@@ -28,7 +28,7 @@ define(function() {
 						return [ table.pure(), form.pure() ].lift(function(t, f) {
 
 							app.deps('components').table = t.control('main').render(app.table);
-							app.deps('components').form  = f.control('main').fields('data.main', app.fields);
+							app.deps('components').form  = f.control('main').fields(app.fields, 'data.main');
 
 							return app;
 
@@ -51,9 +51,8 @@ define(function() {
 						var t = a.deps('components.table');
 						f.attach(m.map(function(e) { return e.children.item(0); }));
 						t.attach(m.map(function(e) { return e.children.item(1); }));
-						f.proxy('click', 'button', 'form.find');
+						f.proxy('click', 'button', 'form.run');
 						t.proxy('click', 'tr', 'table.click');
-						a.observe('change', 'form.find', 'data.control.main.find');
 						a.observe('change', 'table.click', 'data.control.main.show');
 					});
 				},
@@ -84,7 +83,7 @@ define(function() {
 					},
 					search: function() {
 						var comp  = this.root();
-						var str   = comp.get('form.data.main.find');
+						var str   = comp.get('form.data.main.find') || '';
 						var tabl  = comp.deps('components.table');
 						var store = sys.get().store();
 						var rndr  = comp.get('rndr') || comp.set('rndr', tabl.view().tmpl('main', 'body', 'column'));
@@ -101,12 +100,18 @@ define(function() {
 			},
 
 			fields: {
-				find: { elem: 'input',  label: 'Find', type: 'text',  placeholder: 'type your search here' },
-				run:  { elem: 'button', label: 'Run',  type: 'button' }
+				find: { type: 'string', elem: { tag: 'input',  label: 'Find', type: 'text',  placeholder: 'type your search here' } },
+				run:  { type: 'action', elem: { tag: 'button', label: 'Run',  type: 'button' } }
 			},
 
 			table: {
 				name:  { 'class': 'h2', 'innerText': 'Result'  }
+			},
+
+			events: {
+				data: {
+					'change:form.run':'data.control.main.find'
+				}
 			}
 
 		};

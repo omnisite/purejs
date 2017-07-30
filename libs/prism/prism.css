@@ -141,10 +141,11 @@ pre.line-numbers {
 	position: relative;
 	padding-left: 3.8em;
 	counter-reset: linenumber;
+	margin-top: 0;
 }
 
 pre.line-numbers > code {
-	position: relative;
+	position: relative !important;
 }
 
 .line-numbers .line-numbers-rows {

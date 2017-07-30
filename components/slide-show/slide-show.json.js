@@ -8,43 +8,37 @@ define(function() {
 
       slide1: {
 
-        data: 'holder.js/900x500/auto/#777:#555/text:First slide',
+        title: 'Pure JS',
 
-        alt: 'First slide',
+        data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
 
-        src: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iNTAwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjUwMCIgZmlsbD0iIzc3NyIvPjx0ZXh0IHRleHQtYW5jaG9yPSJtaWRkbGUiIHg9IjQ1MCIgeT0iMjUwIiBzdHlsZT0iZmlsbDojNTU1O2ZvbnQtd2VpZ2h0OmJvbGQ7Zm9udC1zaXplOjU2cHg7Zm9udC1mYW1pbHk6QXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWY7ZG9taW5hbnQtYmFzZWxpbmU6Y2VudHJhbCI+Rmlyc3Qgc2xpZGU8L3RleHQ+PC9zdmc+',
+        label: 'Combining functional with traditional',
 
-        label: 'First slide label',
-
-        text: 'Nulla vitae elit libero, a pharetra augue mollis interdum.'
+        text: 'Monadic and applicative effects and control flow running over a router / module / component / view based data structure.'
 
       },
 
       slide2: {
         
-        data: 'holder.js/750x400/auto/#666:#444/text:Second slide',
+        title: 'Pure JS',
 
-        alt: 'Second slide',
+        data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
 
-        src: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI3NTAiIGhlaWdodD0iNDAwIj48cmVjdCB3aWR0aD0iNzUwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iIzY2NiIvPjx0ZXh0IHRleHQtYW5jaG9yPSJtaWRkbGUiIHg9IjM3NSIgeT0iMjAwIiBzdHlsZT0iZmlsbDojNDQ0O2ZvbnQtd2VpZ2h0OmJvbGQ7Zm9udC1zaXplOjQ3cHg7Zm9udC1mYW1pbHk6QXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWY7ZG9taW5hbnQtYmFzZWxpbmU6Y2VudHJhbCI+U2Vjb25kIHNsaWRlPC90ZXh0Pjwvc3ZnPg==',
-
-        label: 'Second slide label',
+        label: 'Data driven component extension',
         
-        text: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.'
+        text: 'Enables fine-grained code reuse no matter where the code is defined.'
 
       },
 
       slide3: {
 
-        data: 'holder.js/600x300/auto/#555:#333/text:Third slide',
+        title: 'Pure JS',
 
-        alt: 'Third slide',
+        data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
 
-        src: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MDAiIGhlaWdodD0iMzAwIj48cmVjdCB3aWR0aD0iNjAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzU1NSIvPjx0ZXh0IHRleHQtYW5jaG9yPSJtaWRkbGUiIHg9IjMwMCIgeT0iMTUwIiBzdHlsZT0iZmlsbDojMzMzO2ZvbnQtd2VpZ2h0OmJvbGQ7Zm9udC1zaXplOjM4cHg7Zm9udC1mYW1pbHk6QXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWY7ZG9taW5hbnQtYmFzZWxpbmU6Y2VudHJhbCI+VGhpcmQgc2xpZGU8L3RleHQ+PC9zdmc+',
+        label: 'High performance convergent event system',
 
-        label: 'Third slide label',
-
-        text: 'Praesent commodo cursus magna, vel scelerisque nisl consectetur.'
+        text: 'Convergence of UI and data events defined by simple relative path annotation on component level.'
 
       }
 

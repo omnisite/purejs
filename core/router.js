@@ -6,7 +6,7 @@ define(function() {
 
 		deps: {
 
-			core: [ 'pure' ]
+			core: [ 'pure', 'dom' ]
 
 		}
 
@@ -17,24 +17,23 @@ define(function() {
 			init: function(deps) {
 				return deps('core.pure')(function(sys) {
 					return function(app) {
-						return sys.klass('Node').parse(app.router()).prop('root');
+						return sys.klass('Node').parse(app.klass()).prop('root');
 					}
 				})(this);
 			},
 
-			router: function() {
+			klass: function() {
 				return {
 					klass: function Router(opts) {
 						this.$super.call(this, opts);
-
+						this._events  = (opts.parent._events || opts.parent.get('events')).child({ name: 'events', parent: this });
 						this._started = 1;
 						this._scope   = opts.scope || [];
 						this._active  = this.set('active', null);
 						this._scopes  = this.node('scopes');
 					},
 					ext: [
-						{ name: '_children', value: 'routes' },
-						{ name: '_passthru', value: 'scopes' },
+						{ name: '_children', value: 'scopes' },
 						(function started() {
 							return this._started > 1;
 						}),
@@ -80,7 +79,6 @@ define(function() {
 							if (isDefault) this.setDefault(name);
 							if (!scope) {
 								scope = this.child({ name: name, scope: this._scope.concat([name]) });
-								scope.check();
 							}
 							return scope;
 						}),
@@ -105,12 +103,11 @@ define(function() {
 						}),
 						(function getActiveRouter(arg) {
 							var router = this.root, test = router,
-								active = router.get('active'),
+								active = (router.get('active') || '').split('/'),
 								scopes = router.get('scopes');
 							if (active && scopes) {
-								while ((test = scopes.get(active)) && test instanceof Router) {
+								while ((test = scopes.get(active.shift())) && test instanceof router.constructor) {
 									router = test;
-									active = router.get('active');
 									if (!(scopes = router.get('scopes'))) break;
 								}
 							}
@@ -143,9 +140,11 @@ define(function() {
 						}),
 						(function run(evt) {
 							if (evt.target == 'active') {
-								var handler = this.getRoute(evt.value);
+								var router  = this.getActiveRouter();
+								var active  = evt.value.split('/').pop();
+								var handler = router.getRoute(active);
 								if (handler && handler instanceof Function) {
-									handler.call(this, this.getRouteName(evt.value), this.get('previous'));
+									handler.call(this, this.getRouteName(active), this.get('previous'));
 								}
 							}
 						}),
@@ -247,13 +246,11 @@ define(function() {
 					},
 					init: function(type, klass, sys) {
 						var lstr = this.find('Listener').$ctor;
-						var root = klass.prop('root', sys.root.child('router', klass.$ctor));
-						klass.prop('_events', sys.get('events').child({ name: 'events', parent: root }));
 						klass.prop('listener', lstr.init('router', 'store'));
-						klass.prop('dispatcher', klass.prop('listener').run(root));
+						var root = klass.prop('root', sys.root.child('router', klass.$ctor));
+						//klass.prop('dispatcher', klass.prop('listener').run(root));
 
 						self.addEventListener('hashchange', type.hashchange(root), false);
-
 					}
 				};
 			}

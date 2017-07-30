@@ -2,7 +2,13 @@
 	<div class="panel-heading">
 		<h4 class="panel-title">
 			<a data-toggle="collapse" data-parent="#{{#def.id}}" data-id="#{{=it.id}}" href="Javascript:">
-			<span class="glyphicon glyphicon-folder-close"></span>{{=it.name}}</a>
+				<span class="glyphicon glyphicon-folder-close"></span>{{=it.name}}
+			</a>
+			{{? it.add }}
+			<a data-click="data.control.main.add" data-parent="#{{#def.id}}" data-id="#{{=it.id}}" href="Javascript:">
+				<span class="glyphicon glyphicon-plus pull-right"></span>
+			</a>
+			{{?}}
 		</h4>
 	</div>
 	<div id="{{=it.id}}" data-path="{{=it.path}}" class="panel-collapse collapse">
@@ -19,7 +25,7 @@
 		<td>
 			<a href="Javascript:">
 				<span class="glyphicon glyphicon-pencil text-primary">
-					{{=it.key}}
+					{{? it.label }}{{=it.label}}{{??}}{{? it.name }}{{=it.name}}{{??}}{{=it.key}}{{?}}{{?}}
 				</span>
 			</a>
 		</td>
@@ -28,9 +34,18 @@
 <script id="style" type="text/template">
 	.accordion .panel-body {
   		font-size: 0.8em;
-  		padding-left: 5px;
+  		padding: 0 0 0 5px;
 	    max-height: 300px;
-	    overflow-y: auto;
+		-webkit-box-sizing: border-box;
+		-moz-box-sizing: border-box;
+		box-sizing: border-box;
+		overflow: hidden;
+	}
+	.accordion .panel-body.anim-start {
+		border-top: none !important;
+	}
+	.accordion .panel-body.anim-done {
+		overflow: auto;
 	}
 	.accordion .panel-body .text-primary {
 		font-size: 1em;
@@ -43,5 +58,8 @@
 	}
 	.accordion .glyphicon-pencil:before {
 		margin-right: 5px;
+	}
+	.accordion .panel-body table {
+		margin-top: 15px;
 	}
 </script>

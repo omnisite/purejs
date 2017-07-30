@@ -2,7 +2,7 @@
 
     define(function() {
 
-        return effects(this).attr('name', 'core.effect');
+        return effects([].slice.call(arguments).shift()).attr('name', 'core.effect');
 
     });
 
@@ -21,12 +21,13 @@
      
             (function Setup(env, defs, sys) {
                 return sys.klass('Cont').of(defs, function(d) {
-                    var eff = env(sys.root, sys);
-                    return eff.runDefs(eff, defs).fmap(function() {
-                        sys.eff = eff.getOperation('js.nodes.fn').chain(function(op) {
+                    var eff = env(sys.get(), sys);
+                    var get = eff.runDefs(eff, defs);
+                    return get.fmap(function() {
+                        sys.run().eff = sys.ctor.prop('eff', eff.getOperation('js.nodes.fn').chain(function(op) {
                             return op.run(eff)('runOperation');
-                        });
-                        sys.enqueue = sys.eff('sys.loader.enqueue').init().unsafePerformIO;
+                        }));
+                        sys.run().enqueue = sys.eff('sys.loader.enqueue').init().unsafePerformIO;
                         return sys;
                     });
                 });
@@ -67,6 +68,12 @@
                     var inst = this.init.apply(this, args);
                     return inst.map ? inst.map(func) : func(inst);          
                 };
+                Instruction.prototype.bind = function() {
+                    var args = Array.prototype.slice.call(arguments);
+                    var func = args.shift();
+                    var inst = this.init.apply(this, args);
+                    return inst.bind ? inst.bind(func) : func(inst);          
+                };
                 Instruction.prototype.ap = function() {
                     var args  = Array.prototype.slice.call(arguments);
                     var monad = args.shift();
@@ -78,15 +85,23 @@
                     args.unshift('lift');
                     return this.init.apply(this, args);
                 };
-                Instruction.prototype.run = function() {
+                Instruction.prototype.just = function() {
                     var args = Array.prototype.slice.call(arguments);
-                    var inst = this.init();
+                    var inst = this.init.call(this, 'just');
+                    return this.$run(inst, args);
+                };
+                Instruction.prototype.$run = function(inst, args) {
                     if (inst && inst.run) {
                         return args.length > 1 ? inst.run.apply(inst, args) : (args.length ? inst.run(args.shift()) : inst.run());
                     }else if (inst && inst instanceof Function) {
                         return args.length > 1 ? inst.apply(undefined, args) : (args.length ? inst(args.shift()) : inst());
                     }
                     return inst;
+                };
+                Instruction.prototype.run = function() {
+                    var args = Array.prototype.slice.call(arguments);
+                    var inst = this.init();
+                    return this.$run(inst, args);
                 };
                 this.prototype.isInstruction = function(value) {
                     return value && value instanceof Instruction ? true : false;
@@ -102,7 +117,7 @@
                     if (env) this.env = env;
                 };
                 Handler.prototype.constructor = Handler;
-                Handler.prototype.env  = Handler.env  = this.root;
+                Handler.prototype.env  = Handler.env  = this.get();
                 Handler.prototype.just = Handler.just = this.klass('maybe').pure;
                 Handler.prototype.init = function(node, method, type, action, result) {
                     return this.just(this.fn[method]).map(function(runInit) {
@@ -117,7 +132,7 @@
 
             [(function CreateFn(wrap, fn) {
                 return function(sys) {
-                    return wrap(fn(sys.root.get('utils.point')));
+                    return wrap(fn(sys.get('utils.point')));
                 }
             }),
 
@@ -135,8 +150,8 @@
                         return value && value instanceof ctor ? value : ctor.pure(value);
                     }
                 };
-                function just(type, value) {
-                    return type.is && type.of ? type.of(value) : sys.klass(type).pure(value);
+                function just(type, value, fn) {
+                    return type.is && type.of ? type.of(value) : sys.klass(type).fromConstructor(fn || 'pure', value);
                 };
                 function apply(monad, type) {
                     return function $_apply(value) {
@@ -180,11 +195,11 @@
                     }
                 };
                 return {
+                    of: function(type, value, result) {
+                        return just(type, value, 'of');
+                    },
                     just: function(type, value, result) {
                         return just(type, value);
-                    },
-                    args: function(type, value, result) {
-                        return 
                     },
                     typed: function(type, value, result) {
                         return just(type, bind(just(type, value)));
@@ -209,6 +224,9 @@
                     },
                     maybe: function(type, value, result) {
                         return apply(just(type, value), cast(result || 'Maybe'));
+                    },
+                    run: function(type, value, result) {
+                        return value;
                     }
                 };
             })],
@@ -249,13 +267,15 @@
                             return this.getOperation(path).chain(unit);
                         }),
                         (function getNode(location) {
-                            var loc = this.maybe(this.walk(location, function(value, key, node) {
-                                return node.lookup('factory').chain(function(factory) {
-                                    return factory.get(key) ? node.is(value) : false;
+                            return this.maybe().map(function(env) {
+                                return env.walk(location, function(value, key, node) {
+                                    return node.lookup('factory').chain(function(factory) {
+                                        return factory.get(key) ? node.is(value) : false;
+                                    });
                                 });
-                            }));
-                            if (loc && loc.unit && (loc = loc.unit()) && loc.ref) return loc.ref();
-                            else return loc;
+                            }).chain(function(loc) {
+                                return loc.ref();
+                            });
                         }),
                         (function getFactory() {
                             var args = [].slice.apply(arguments);
@@ -416,7 +436,7 @@
                                 })(
                                     (function(element, value) {
                                         if (!element) return;
-                                        querying = !value && [].slice.call(arguments).length < 2;
+                                        var querying = !value && [].slice.call(arguments).length < 2;
 
                                         switch (this.baseTag(element)) {
                                             case 'h':
@@ -434,7 +454,7 @@
                                                         }
                                                         break;
                                                     default:
-                                                        return this.setValue(element, value);
+                                                        return element.value = value;
                                                 }
                                                 return;
                                             case 'select':
@@ -446,7 +466,7 @@
                                                         o.removeAttribute('selected');
                                                     }
                                                     return v;
-                                                }, { value: value, previous: null });
+                                                }, { value: element.value = value, previous: null });
                                             case 'option':
                                                 this.setValue(element, value);
 
@@ -539,6 +559,7 @@
 
                                     }else if (typeof v == 'object') {
                                         r.attrs(r.elem[k], v);
+                                        return;
                                     }else if (k == 'text' || k == 'innerText') {
                                         r.elem['innerText'] = v;
                                     }else if (k == 'innerHTML') {
@@ -814,7 +835,7 @@
                                 }),
                                 (function makeOf(eff, obj, bind, set, wrap) {
                                     return function(def, run, res) {
-                                        return obj.of(def).bind(bind(eff, set, res)).cont().bind(wrap(run, res));
+                                        return obj.of(def).bind(bind(eff, set, res)).cont().bind(res.konst(eff.pure(res))).bind(wrap(run));
                                     }
                                 }),
                                 (function makeBind(eff, set, r) {
@@ -865,40 +886,41 @@
                                     }
                                 }),
                                 (function(make, run, wrap, parent, result) {
-                                    return wrap(parent, result.bind({ wrap: make(sys.get('utils.get'), run) }), sys.klass('Cont'), sys.klass('Value'));
+                                    return wrap(parent, result(make(sys.get('utils.get'), run, sys.klass('Maybe').of)), sys.klass('Cont'), sys.klass('Value'));
                                 })(
-                                    (function make(get, run) {
+                                    (function make(get, run, sys) {
                                         return function(deps) {
-                                            return run(get(deps));
+                                            return run(get(deps), sys);
                                         }
                                     }),
-                                    (function run(get) {
+                                    (function run(get, of) {
                                         return function() {
                                             var args = [].slice.call(arguments);
                                             if (!args.length) return get();
                                             var path = args.flat().join('.').split('.');
-                                            if (path.length == 1) return get(path.shift());
+                                            var type = path[0].substr(0, 1) == '$' && path.shift() ? of : unit;
+                                            if (path.length == 1) return type(get(path.shift()));
                                             var name = path.pop();
                                             var base = get(path.join('.'));
-                                            if (base) return base[name] || base[name.replace('-', '.')] || base[(name.indexOf('$') < 0 ? ('$' + name) : name.replace('$', ''))];
+                                            if (base) return type(base[name] || base[name.replace('-', '.')] || base[(name.indexOf('$') < 0 ? ('$' + name) : name.replace('$', ''))]);
                                         }
                                     }),
                                     (function wrap(parent, result, cont, value) {
-                                        return function makeResult(run, deps) {
-                                            return function() {
+                                        return function makeResult(run) {
+                                            return function(deps) {
                                                 if (deps.parent) {
                                                     if (cont.is(deps.parent) || value.is(deps.parent)) {
-                                                        return deps.parent.bind(parent(run, deps, result));
+                                                        return deps.parent.bind(parent(result(run), deps));
                                                     }else {
-                                                        return parent(run, deps, result)(deps.parent)(unit);
+                                                        return parent(result(run), deps)(deps.parent)(unit);
                                                     }
                                                 }else {
-                                                    return result(run, deps);
+                                                    return result(run)(deps);
                                                 }
                                             }
                                         }
                                     }),
-                                    (function makeParent(run, deps, res) {
+                                    (function makeParent(run, deps) {
                                         return function(parent) {
                                             return function $_pure(k) {
                                                 var prtdeps = parent.ctor.prop('deps')();
@@ -912,26 +934,31 @@
                                                         });
                                                     }
                                                 }
-                                                return k(res(run, deps));
+                                                return k(run(deps));
                                             }
                                         }
                                     }),
-                                    (function makeResult(run, deps) {
-                                        var res = run(deps);
-                                        if (deps.parent) {
-                                            res.parent = deps.parent;
+                                    (function makeResult(wrap) {
+                                        return function(run) {
+                                            return function(deps) {
+                                                var res = run(deps);
+                                                var dep = res.deps = wrap(deps);
+                                                if (res.init) {
+                                                    res = res.init(dep);
+                                                }
+                                                if (deps.parent) {
+                                                    res.parent = deps.parent;
+                                                }
+                                                res.name = deps.name;
+                                                res.deps = dep;
+                                                return res;
+                                            }
                                         }
-                                        res.name = deps.name;
-                                        res.deps = this.wrap(deps);
-                                        if (res.init) {
-                                            return res.init(res.deps);
-                                        }
-                                        return res;
                                     })
                                 )
                             ),
-                            (function(map, wrap, parse, eng, obj) {
-                                var base = { bind: sys.get('binds.make') };
+                            (function(wrap, parse, eng, obj) {
+                                var base = { obj: sys.klass('Obj'), bind: sys.get('binds.make') };
                                 var link = sys.get('link').make('parser', 'valueMap', parse.call(base)).add('parser', {}, 'base');
                                 sys.get('link').make('loader', 'valueMap', obj.call(sys)).add('loader', {}, 'base');
                                 sys.get('link').make('engine', 'valueMap', eng.call(sys)).add('engine', {
@@ -942,42 +969,44 @@
                                 }, 'unit').add('scripts', {
                                     'tmpl':  {}, 'style': {}
                                 }, 'tmpl', 'tmpl');
-                                return map.call({ wrap: wrap, loader: sys.klass('Coyoneda').of(link.run('base'), 'loader') });
+                                return wrap(link.run('loader').free());
                             })(
-                                (function() {
-                                    return this.wrap(this.loader, this.loader.map(function(x) {
-                                        return function(v) {
-                                            return x(v).cont().bind(function(r) {
-                                                return r.result;
-                                            });
-                                        };
-                                    }));
-                                }),
-                                (function(loader, mapped) {
+                                (function(loader) {
                                     return function base(ref) {
-                                        return ref ? mapped.run(ref) : loader;
+                                        return ref ? loader.cont(ref) : loader;
                                     }
                                 }),
                                 (function() {
-                                    return {
-                                        base: this.bind('store')('fold', function(r, v, k, i, o) {
-                                            if (v instanceof Function) {
-                                                r = v(r, k);                             
-                                            }else if (typeof v == 'object') {
-                                                if (v.$$map) {
-                                                    r = v.$$map(r);
-                                                }else if (r.$$map) {
-                                                    r = r.$$map(r, k);
-                                                }else if (v.base) {
-                                                    r = v.base(r, k);
+                                    return this.obj.of({
+                                        loader: {
+                                            make: function(map) {
+                                                return function(ref) {
+                                                    if (ref.$keys) {
+                                                        ref.v = map.run(ref.v, ref.$keys.shift());
+                                                    }else if ((ref = map.run(ref, 'init'))) {
+                                                        if (!ref.v.done) {
+                                                            ref.v = map.run(ref.v, ref.$keys.shift());
+                                                            return this.next(ref);
+                                                        }
+                                                    }
+                                                    if (ref.v.done) {
+                                                        return this.done(ref.a.create ? ref.v.create(ref.a.create).pure() : ref.v.cont);
+                                                    }
+                                                    return this.cont(ref);
                                                 }
+                                            },
+                                            free: function() {
+                                                return sys.klass('Free').extend('FreeL', {
+                                                    run: function(f) {
+                                                        return this[this._t].enqueue(this._x.chain(this.$fn.map(f)));
+                                                    }
+                                                }).of(sys.klass('Coyoneda').of(this.make)).lift(sys.get('loader').link('valueMap').run('base'));
                                             }
-                                            return r;
-                                        }),
+                                        },
                                         parse: this.bind('object')('fold', function(r, v, k, i, o) {
                                             if (typeof v == 'object') r.set(k, v);
                                         })
-                                    };
+                                    });
                                 }),
                                 (function() {
                                     return {
@@ -994,14 +1023,19 @@
                                                     return new this(loc).run(res);
                                                 }
                                             }
-                                        ),
+                                        ).$ctor,
                                         loader: this.klass('Cont').extend(
                                             function ComponentCont(mv, mf) {
                                                 this.$super.call(this, mv, mf);
                                             }, {
                                                 mf: function mf(tag) {
                                                     return function $_pure(k) {
-                                                        k(sys.find(tag.getAttribute('data-ref')).get('cont'));
+                                                        var store = sys.find(tag.getAttribute('data-ref'));
+                                                        if (store.get('js.isDefined')) {
+                                                            store.get('js').get(k);
+                                                        }else {
+                                                            k(store.get('cont'));
+                                                        }
                                                     };
                                                 }
                                             }, {
@@ -1021,7 +1055,7 @@
                                                     }
                                                 }
                                             }
-                                        ),
+                                        ).$ctor,
                                         extend: (function(ext) {
                                             var xtnd = sys.store('utils.extend');
                                             var deps = sys.klass('Deps');
@@ -1032,6 +1066,7 @@
                                         })(
                                             (function extend(xtnd, deps, comp) {
                                                 return function $ext(result) {
+                                                    if (result == comp.$ctor) return comp.$ctor;
 
                                                     if (!result.ext) result.ext = {};
                                                     if (result.parent) {
@@ -1098,58 +1133,62 @@
                                 }),
                                 (function() {
                                     return this.klass('Obj').of({
-                                        init: {
-                                            base: function(ref) {
-                                                return typeof ref == 'object' ? ref : { ref: ref };
-                                            }
-                                        },
-                                        full: {
-                                            base: function(v) {
-                                                v.full = v.ref.replace('.json', '/json').split('.');
-                                                return v;
-                                            }
-                                        },
-                                        path: {
-                                            base: function(v) {
-                                                v.path = v.full.first().split('/');
-                                                return v;
-                                            }
-                                        },
-                                        name: {
-                                            base: function(v) {
-                                                v.name = v.full.length > 3 ? v.full.pop() : v.path.last();
-                                                return v;
-                                            }
-                                        },
-                                        ext: {
-                                            base: function(v) {
-                                                v.ext  = (v.full.length > 1 || v.full.push('js')) && (v.path.first() == 'components' && v.path.last() == 'json' ? v.path.pop() : v.full.last());
-                                                return v;
-                                            }
-                                        },
-                                        type: {
-                                            base: function(v) {
-                                                if (v.ext == 'tmpl' || v.ext == 'json') {
-                                                    v.type = v.ext;
-                                                    v.path = [ v.type ].concat(v.path.slice(1));
-                                                }else {
-                                                    v.type = v.path.first();
+                                        base: {
+                                            run: function(r, k) {
+                                                var v = this.root().get(k);
+                                                if (v instanceof Function) {
+                                                    r = v(r);                             
+                                                }else if (typeof v == 'object') {
+                                                    if (v.$$map) {
+                                                        r = v.$$map(r);
+                                                    }else if (r.$$map) {
+                                                        r = r.$$map(r);
+                                                    }else if (v.base) {
+                                                        r = v.base(r);
+                                                    }
                                                 }
-                                                return v;
+                                                return r;
                                             }
                                         },
-                                        node: {
+                                        init: {
+                                            init: function(ref) {
+                                                return {
+                                                    v: { ref: ref.ref || ref },
+                                                    a: typeof ref == 'object' ? ref : { ref: ref }
+                                                };
+                                            },
                                             node: function(path) {
                                                 return sys.get('assets').get(path) || sys.get('assets').ensure(path)
                                             },
                                             path: function(type, path) {
                                                 return type == 'libs' || type == 'json' ? path.slice(0, 2) : path;
                                             },
-                                            base: function(v) {
-                                                v.node = this.node(this.path(v.type, v.path.join('/').replace(/\$/g, '').split('/')));
-                                                v.loca = v.path.length == 3 || v.type == 'core' || v.type == 'helpers' || v.type == 'libs' ? v.ref : [ v.type, v.name, v.name ].join('/');
-                                                v.name = v.node.set('type', v.name.toCamel());
-                                                return v;
+                                            type: function(v) {
+                                                v.full = v.ref.replace('.json', '/json').split('.');
+                                                v.path = v.full.first().split('/');
+                                                v.name = v.full.length > 3 ? v.full.pop() : v.path.last();
+                                                v.ext  = (v.full.length > 1 || v.full.push('js')) && (v.path.first() == 'components' && v.path.last() == 'json' ? v.path.pop() : v.full.last());
+                                                if (v.ext == 'tmpl' || v.ext == 'json') {
+                                                    v.type = v.ext;
+                                                    v.path = [ v.type ].concat(v.path.slice(1));
+                                                }else {
+                                                    v.type = v.path.first();
+                                                }
+                                                return v.node = this.node(this.path(v.type, v.path.join('/').replace(/\$/g, '').split('/')));
+                                            },
+                                            next: function(i, v) {
+                                                v.loca  = v.path.length == 3 || v.type == 'core' || v.type == 'helpers' || v.type == 'libs' ? v.ref : [ v.type, v.name, v.name ].join('/');
+                                                v.name  = v.node.set('type', v.name.toCamel());
+                                                i.$keys = this.root().keys().slice(2);
+                                                return i;
+                                            },
+                                            done: function(res, ref) {
+                                                return res ? { v: res, a: ref } : null;
+                                            },
+                                            base: function(ref) {
+                                                var init = this.init(ref);
+                                                var node = this.type(init.v);
+                                                return this.done(node.get('ref'), ref) || this.next(init, init.v);
                                             }
                                         },
                                         ctor: {
@@ -1165,9 +1204,11 @@
                                         },
                                         comp: {
                                             base: function(v) {
-                                                var ctor = sys.klass(v.ctor);
-                                                if (!ctor) ctor = sys.klass('$ctor').extend(v.ctor);
-                                                v.comp = ctor.extend(v.name);
+                                                if (v.type == 'components' || v.type == 'modules' || v.type == 'system') {
+                                                    var ctor = sys.klass(v.ctor);
+                                                    if (!ctor) ctor = sys.klass('$ctor').extend(v.ctor);
+                                                    v.comp = ctor.extend(v.name);
+                                                }
                                                 return v;
                                             }
                                         },
@@ -1188,20 +1229,20 @@
                                                 }
                                             },
                                             base: function(v) {
-                                                v.cell = v.node.get(v.ext);
-                                                if (!v.cell) {
-                                                    var lazy = v.path.last().slice(0, 1) == '$' ? true : false;
-                                                    var loca = (lazy ? '$' : '') + v.ext;
-                                                    v.cell = v.node.get(loca);
-                                                    if (!v.cell) {
-                                                        v.cell = v.node.set(loca, this.cell());
+                                                var cell = v.node.get(v.ext);
+                                                var lazy = v.path.last().slice(0, 1) == '$' ? true : false;
+                                                var loca = v.cell = (lazy ? '$' : '') + v.ext;
+                                                if (!cell) {
+                                                    cell = v.node.get(loca);
+                                                    if (!cell) {
+                                                        cell = v.node.set(loca, this.cell());
                                                         this.vmap.run('engine', v.type).of({
                                                             url: v.loca,
                                                             ref: v.node.uid(),
                                                             lazy: lazy
                                                         }, this.next(
                                                             this.cont,
-                                                            v.cell,
+                                                            cell,
                                                             this.vmap.run('handler', v.type)(v.node, this.meta || (this.meta = this.vmap.get('scripts.map'))),
                                                             this.vals
                                                         ));
@@ -1210,13 +1251,7 @@
                                                 return v;
                                             }
                                         },
-                                        cont: {
-                                            base: function(v) {
-                                                v.cont = v.cell.kont();
-                                                return v;
-                                            }
-                                        },
-                                        wrap: {
+                                        result: {
                                             make: function(comp, cont) {
                                                 return function() {
                                                     var args = [].slice.call(arguments), opts;
@@ -1230,19 +1265,15 @@
                                                 };
                                             },
                                             base: function(v) {
-                                                v.wrap = this.make;
-                                                return v;
-                                            }
-                                        },
-                                        result: {
-                                            base: function(v) {
-                                                var create = v.cont.create || (v.cont.create = (v.comp.$ctor.create || (v.comp.$ctor.create = v.wrap(v.comp, v.cont))));
-                                                if (v.create) {
-                                                    v.result = create(v.create).pure();
-                                                }else {
-                                                    v.result = v.path.length > 1 ? v.cont : (v.create = create);
+                                                var cont = v.node.get(v.cell).kont(), create;
+                                                if (v.comp) {
+                                                    create = cont.create || (cont.create = (v.comp.$ctor.create || (v.comp.$ctor.create = this.make(v.comp, cont))));
+                                                    v.comp.set('info', Object.keys(v).reduce(function(r, k) {
+                                                        if (typeof v[k] == 'string') r[k] = v[k];
+                                                        return r;
+                                                    }, {}));
                                                 }
-                                                return v.result;
+                                                return v.node.set('ref', { done: true, create: create, cont: cont.cont() });
                                             }
                                         }
                                     });
@@ -1267,7 +1298,10 @@
                                         });
                                     });
                                 })
-                            )
+                            ),
+                            (function module(name, create) {
+                                return sys.eff('sys.loader.component').run(['modules',name,name].join('/'), create)
+                            })
                         ],
                         factory: {
                             loader: {

@@ -5,7 +5,7 @@ define(function() {
 
 		deps: {
 
-			core: [ 'pure', 'dom' ],
+			core: [ 'pure', 'dom', 'instance' ],
 
 			components: [ 'view', 'nav-bar', 'layout', 'accordion', 'grid', '$code-box' ]
 
@@ -18,7 +18,6 @@ define(function() {
 			ext: {
 				main: function() {
 					var app = this, el = this.view().$el().run();
-					app.deps('components.nav').attach(document.body);
 					var lay = app.child('layout', app.deps('components.layout'));
 					lay.grid(2, 3, function(elem, row, col) {
 						if (col == 1) elem.classList.add('col-md-3', 'col-xs-4');
@@ -30,12 +29,15 @@ define(function() {
 						app.deps('components.accor').attach(c);
 					});
 				},
+				play: function() {
+					sys.get('router').navigate('');
+				},
 				info: function() {
 					var show;
 					if ((show = sys.get('components.slideshow'))) {
 						show.toggle();
 					}else {
-						sys.run().eff('sys.loader.component').run('components/slide-show/slide-show').bind(function(x) {
+						sys.eff('sys.loader.component').run('components/slide-show/slide-show').bind(function(x) {
 
 							return x.create({ name: 'slideshow' }).pure();
 
@@ -49,40 +51,63 @@ define(function() {
 							return mdl;
 						});
 					}
+				},
+				test: function(comp) {
+					return sys.eff('sys.loader.module').run('system', 'system').bind(function(mod) {
+						var item = mod.component(comp, 'system.test', comp);
+						return item.pure ? item.pure() : item;
+					}).bind(function(test) {
+						return test.control('test');
+					});
 				}
 			},
-
+			control: {
+				main: {
+					codeb: function(evt) {
+						var root = this.root();
+						var hndl = root.removeEventListener(evt);
+						return root.component('codeb', 'code-box').once(function(cb) {
+							var module = cb.module();
+							var accor  = module.get('accor');
+							cb.attach(module.$el('#r0c2'));
+							var handlr = module.handler('data.control.main.show');
+							var obsrvr = module.observe(accor, 'change', 'data.current.item', handlr);
+							handlr(evt);
+						}, true);
+					},
+					show: function(evt) {
+						this.root().get('codeb').show(evt);
+					}
+				}
+			},
 			init: function(deps) {
 
 				return deps('core.pure')(function(sys) {
 					return function(app) {
 
-						var module = sys.get('components.home');
+						var comps  = sys.get('components');
+						comps.initialize = app.navbar;
+
+						var module = comps.get('app');
 						var navbr  = app.deps('components.nav-bar').create('navbar');
 						var accor  = app.deps('components.accordion').create(app.accor.call(module));
 
-						var link   = module.node('items').parse(app.link, true).link('typeMap').add('node', {
-							base1: 'base',
-							utils1: 'utils',
-							effects1: 'effects',
-							types1: 'types'
-						});
-
 						return [ navbr.pure(), accor.pure() ].lift(function(n, a) {
 
-							n.item({ id: 'home', name: 'Home' });
+							n.item({ id: 'app', name: 'Home' });
 							n.item({ id: 'find', name: 'Find' });
 							n.menu({ id: 'options', name: 'Options' }).run(function(opts) {
 								opts.item({ id: 'animation', name: 'Animation' });
 								opts.item({ id: 'effects',   name: 'Effects'   });
-								n.item({ id: 'components', name: 'Components' });
 								n.item({ id: 'types', name: 'Types' });
+								n.item({ id: 'play', glyph: 'glyphicon-play-circle', 'class': 'pull-right', href: 'Javascript:' });
+								n.on('click', '[data-id="play"]', module.play.bind(module));
 								n.item({ id: 'info', glyph: 'glyphicon-info-sign', 'class': 'pull-right', href: 'Javascript:' });
 								n.on('click', '[data-id="info"]', module.info.bind(module));
 							});
 
-							a.observe('change', 'data.current.item', 'data.control.main.codeb');
 							a.control('main').run();
+							module.observe(a, 'change', 'data.current.item', 'data.control.main.codeb');
 
 							app.deps('components').nav   = n;
 							app.deps('components').accor = a;
@@ -94,42 +119,8 @@ define(function() {
 				})(this);
 			},
 
-			link: {
-				base: function(info, key) {
-					var node = sys.find(info.id);
-					return key ? [ { name: key, key: key } ]
-					: node.bind(function(v, k, i, o) {
-						return { name: k, key: k };
-					});
-				},
-				utils: function(info, key) {
-					var node = sys.find(info.id);
-					return key ? [ { name: key, key: key } ]
-					: node.bind(function(v, k, i, o) {
-						return { name: k, key: k };
-					}).select(function(x) {
-						return x.key != 'point';
-					});
-				},
-				effects: function(info) {
-					var node = sys.find(info.id);
-					return node.map(function(tval, tkey) {
-						return tval.get('factory').map(function(f, k) {
-							return tval.get(k).map(function(v, t) {
-								return { key: [ tkey, k, t ].join('.') };
-							});
-						});
-					}).flatten();
-				},
-				types: function(info) {
-					var node = sys.find(info.id);
-					return node.get('index').map(function(id) {
-						return sys.find(id);
-					}).bind(function(type) {
-						var parent = type.parent();
-						return { id: parent.uid(), key: type.get('type.$code') + '.type.fn.proto', path: parent.identifier() };
-					});
-				}
+			navbar: function() {
+				this.get('navbar').attach(document.body);
 			},
 
 			accor: function() {
@@ -174,17 +165,6 @@ define(function() {
 										return { id: parent.uid(), key: type.get('type.$code') + '.type.fn.proto', path: parent.identifier() };
 									});
 								}
-							},
-							codeb: function(evt) {
-								var root = this.root().parent();
-								var hndl = root.removeEventListener(evt);
-								return root.component('codeb', 'code-box').once(function(cb) {
-									var module = cb.module();
-									var accor  = module.get('accor');
-									cb.attach(module.$el('#r0c2'));
-									module.observe(accor, 'change', 'data.current.item', cb.show.bind(cb));
-									cb.show(evt);
-								}, true);
 							},
 							run: function() {
 								return this.root().get('data').parse({

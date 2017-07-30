@@ -8,7 +8,7 @@ define(function() {
 
 			core: [ 'pure' ],
 
-			scripts: [ '$bezier' ]
+			scripts: [ 'bezier' ]
 
 		}
 
@@ -19,13 +19,11 @@ define(function() {
 			init: function(deps) {
                 return deps('core.pure')(function(sys) {
                     return function(dom) {
-                        var eff    = sys.run().eff('sys.eff.parse').run(dom.eff);
+                        var eff    = sys.eff('sys.eff.parse').run(dom.eff);
                         var calc   = eff.ensure('dom.calc');
                         var node   = calc.node('bezier').parse(dom.easing);
-                        var makefn = calc.set('makefn', dom.deps('scripts.$bezier').bind(function(fn) {
-                            return function $_pure(k) {
-                                k(calc.set('makefn', fn));
-                            }
+                        var makefn = calc.set('makefn', dom.deps('$.scripts.$bezier').chain(function(fn) {
+                            return fn;
                         }));
         				return { makefn: makefn };
                     }
@@ -88,12 +86,7 @@ define(function() {
                                         })({ itid: 1000 }),
                                         createEnqueue: function(queue) {
                                             return function(items, func) {
-                                                if (func) {
-                                                    queue.add.apply(queue, items);
-                                                    queue.run(func);
-                                                }else {
-                                                    queue.push.apply(queue, items);
-                                                }
+                                                queue.run(items, func);
                                             }
                                         },
                                         createBaseItem: this.get('utils.extend'),
@@ -107,14 +100,18 @@ define(function() {
                                                     count:    0,
                                                     fn:       value.fn ? updater.run(value.fn) : func,
                                                     ease:     easingfn ? easing.run(easingfn) : unit,
+                                                    klass:    value.klass || item.klass || false,
                                                     prop:     value.prop || item.prop, 
                                                     from:     value.from || item.from || 0,
                                                     to:       value.to   || item.to || 0,
+                                                    value:    value.value || item.value,
                                                     fraction: item.fraction,
                                                     toggle:   value.toggle === false ? false : (item.toggle === true),
                                                     init:     value.init   === false ? false : (item.init   === true),
                                                     duration: duration,
                                                     delay:    perc(duration, value.delay || item.delay),
+                                                    times:    value.times || item.times || 0,
+                                                    factor:   value.factor || item.factor || 0,
                                                     step:     value.step, $step: item.step || 0.1,
                                                     tstart:   0,
                                                     ts:       0,
@@ -134,58 +131,84 @@ define(function() {
                                         },
                                         defaultParser: function(item) {
                                             var style = self.getComputedStyle(item.elem);
-                                            if (typeof item.from == 'string') {
-                                                if (item.from == 'prop') item.from = item.prop;
+                                            if (item.value == 'prop') {
                                                 item.$from = parseInt(
                                                     item.elem && item.elem.style
-                                                    ? (item.elem.getAttribute('data-from-' + item.from)
-                                                        || item.elem.setAttribute('data-from-' + item.from,
-                                                            style[item.from].replace(/[^0-9\.]/g, ''))
-                                                        || item.elem.getAttribute('data-from-' + item.from))
-                                                    : 0);
-                                            }else item.$from = item.from;
-                                            if (typeof item.to == 'string') {
-                                                if (item.to == 'prop') item.to = item.prop;
-                                                item.$to = parseInt(
-                                                    item.elem && item.elem.style
-                                                    ? (item.elem.getAttribute('data-to-' + item.to)
-                                                        || item.elem.setAttribute('data-to-' + item.to,
-                                                            style[item.to].replace(/[^0-9\.]/g, ''))
-                                                        || item.elem.getAttribute('data-to-' + item.to))
-                                                    : 0);
-                                            }else item.$to = item.to;
-                                            item.$init  = item.init;
-                                            item.value  = item.prev = item.$from;
-                                            item.diff   = item.$to - item.$from;
-                                            item.posneg = item.$from < item.$to ? 1 : -1;
-                                            item.abs    = item.diff*item.posneg;
-                                            item.round  = item.abs < 10 ? 1000 : 100;
-                                            item.step   = item.step || (1 / item.round);
+                                                    ? (item.elem.getAttribute('data-from-' + item.prop)
+                                                        || item.elem.setAttribute('data-from-' + item.prop,
+                                                            style[item.prop].replace(/[^0-9\.]/g, ''))
+                                                        || item.elem.getAttribute('data-from-' + item.prop))
+                                                    : item.from);
+                                                item.$to = item.$from == item.from ? item.to : item.from;
+                                            }else {
+                                                if (typeof item.from == 'string') {
+                                                    if (item.from == 'prop') item.from = item.prop;
+                                                    item.$from = parseInt(
+                                                        item.elem && item.elem.style
+                                                        ? (item.elem.getAttribute('data-from-' + item.from)
+                                                            || item.elem.setAttribute('data-from-' + item.from,
+                                                                style[item.from].replace(/[^0-9\.]/g, ''))
+                                                            || item.elem.getAttribute('data-from-' + item.from))
+                                                        : 0);
+                                                }else item.$from = item.from;
+                                                if (typeof item.to == 'string') {
+                                                    if (item.to == 'prop') item.to = item.prop;
+                                                    item.$to = parseInt(
+                                                        item.elem && item.elem.style
+                                                        ? (item.elem.getAttribute('data-to-' + item.to)
+                                                            || item.elem.setAttribute('data-to-' + item.to,
+                                                                style[item.to].replace(/[^0-9\.]/g, ''))
+                                                            || item.elem.getAttribute('data-to-' + item.to))
+                                                        : 0);
+                                                }else item.$to = item.to;
+                                                if (item.value == 'from' && item.$from == item.from) {
+                                                    item.elem.style[item.prop] = item.fn(item.$from);
+                                                }
+                                            }
+                                            item.$init   = item.init;
+                                            item.$times  = item.times;
+                                            item.$factor = item.factor;
+                                            item.value   = item.prev = item.$from;
+                                            item.diff    = item.$to - item.$from;
+                                            item.posneg  = item.$from < item.$to ? 1 : -1;
+                                            item.abs     = item.diff*item.posneg;
+                                            item.round   = item.abs < 10 ? 1000 : 100;
+                                            item.step    = item.step || (1 / item.round);
                                             return item;
                                         },
                                         createTemplateWrap: function(enqueue, lazy) {
                                             return function(template, parser) {
                                                 return lazy.createRunWrap(
-                                                    enqueue, lazy.createItemWrap(
+                                                    lazy, enqueue, lazy.createItemWrap(
                                                         lazy.createBaseItem({
                                                             id: lazy._id, itid: lazy.itid, init: true, ts: 0, prevts: 0,
                                                             $from: 0, $to: 0, fraction: 0, duration: 0, delay: 0,
                                                             toggle: true, tstart: 0, done: false }, template),
                                                         lazy.createBaseItem,
                                                         parser || lazy.defaultParser,
-                                                        sys.run().eff('dom.elements.updater'),
-                                                        sys.run().eff('dom.easing.make').init(),
+                                                        sys.eff('dom.elements.updater'),
+                                                        sys.eff('dom.easing.make').init(),
                                                         lazy.defaultPercer
                                                     )
                                                 );
                                             }
                                         },
-                                        createRunWrap: function(enqueueItem, makeItem) {
+                                        createRun: function(thread, args) {
+                                            return function $_pure(continuation) {
+                                                return thread.run(args.map(function(v) {
+                                                    if (v.klass) {
+                                                        v.elem.classList.remove('anim-done');
+                                                        if (v.$from == v.from) {
+                                                            v.elem.classList.add('anim-start');
+                                                        }
+                                                    }
+                                                    return v;
+                                                }), continuation);
+                                            }
+                                        },
+                                        createRunWrap: function(anim, thread, makeItem) {
                                             return function() {
-                                                var args = [].slice.call(arguments).map(makeItem);
-                                                return function $_pure(continuation) {
-                                                    return enqueueItem(args, continuation);
-                                                }
+                                                return anim.createRun(thread.lift(), [].slice.call(arguments).flat().map(makeItem));
                                             }
                                         }
                                     },
@@ -196,10 +219,10 @@ define(function() {
                                 }).of(function $_anim(val) {
                                     val.prevts  = val.ts;
                                     val.prevlap = val.elapsed;
-                                    val.elapsed = (val.ts = parseInt(self.now())) - (val.tstart || (val.tstart = val.ts)) - val.delay;
-                                    if (val.elapsed > 0 || val.init) {
+                                    val.elapsed = (val.ts = parseInt(self.now())) - (val.tstart || (val.tstart = (val.ts + val.delay)));
+                                    if (val.elapsed > 0 || ((val.times == val.$times && val.init))) {
                                         val.fraction = val.init ? 0 : (val.elapsed / val.duration);
-                                        if (val.fraction > 1) {
+                                        if (val.fraction >= 1) {
                                             val.fraction = 1;
                                             val.done     = val.last;
                                             val.last     = true;
@@ -207,20 +230,23 @@ define(function() {
                                         }else {
                                             val.init     = false;
                                             val.value    = parseInt((val.$from + (val.ease(val.fraction) * val.diff))*val.round)/val.round;
+                                            if (val.klass) val.elem.classList.add('anim-running');
                                         }
                                         if ((!val.count++ && val.$init) || (val.last && (val.done = true)) || ((val.value - val.prev) * val.posneg) > val.step) {
                                             //console.log('!UPDATE!', { fs: val.ts - val.prevts, prop: val.prop, prev: val.prev, val: val.value, step: val.step });
                                             val.elem.style[val.prop] = val.fn((val.prev = val.value));
+                                            if (val.count == 2 && val.klass) val.elem.classList.remove('anim-start');
                                         }
                                     }
-                                    if (val.done) {
+                                    if (!val.done) {
+                                        return true;
+                                    }else {
                                         //console.log('!DONE!', { id: val.id, count: val.count, fs: val.ts - val.prevts, prop: val.prop, prev: val.prev, val: val.value, step: val.step });
                                         val.done    = false;
                                         val.init    = val.$init;
                                         val.last    = false;
                                         val.tstart  = 0;
                                         val.elapsed = 0;
-                                        val.count   = 0;
                                         if (val.toggle) {
                                             val.$to    = val.$from;
                                             val.$from  = val.value;
@@ -229,14 +255,38 @@ define(function() {
                                         }else {
                                             val.value  = val.prev = val.$from;
                                         }
-                                        return true;
-                                    }
-                                    return false;
+                                        if (val.$times) {
+                                            if (val.times && --val.times) {
+                                                if (val.factor) {
+                                                    val.factor.keys().map(function(k) {
+                                                        val[k] = val[k]*val.factor[k];
+                                                    });
+                                                }
+                                                return true;
+                                            }else {
+                                                val.times = val.$times;
+                                            }
+                                        }
+                                        val.count = 0;
+                                        if (val.klass) {
+                                            val.elem.classList.remove('anim-running');
+                                            val.elem.classList.add('anim-done');
+                                        }
+                                        return false;
+                                    };
                                 }).nest().lift(function(a, b) {
                                     return a.createTemplateWrap(
-                                        a.createEnqueue(
-                                            sys.klass('Thread').$ctor.raf([], a.run())
-                                        ), a)(b);
+                                        sys.klass('Free').parse({
+                                            klass: function FreeA(f, x) {
+                                                this.$super(f, x);
+                                            },
+                                            ext: { _t: '$anim' },
+                                            init: function(type, klass, sys) {
+                                                klass.$ctor.list = klass.parent().$ctor.list;
+                                                klass.$ctor.raf  = klass.parent().$ctor.raf;
+                                            }
+                                        }).$ctor.raf(a.run()),
+                                    a)(b);
                                 });
                             })
                         ),
@@ -306,7 +356,7 @@ define(function() {
                         }),
                         (function button(wrap, fix, run) {
                             return function button() {
-                                var base = sys.run().eff('dom.elements.make').run('button').run();
+                                var base = sys.eff('dom.elements.make').run('button').run();
                                 var make = sys.klass('IO').of(fix).lift(run);
                                 return wrap(base.nest().lift(function(i, v) {
                                     v.$el = i.run(v);
@@ -338,7 +388,7 @@ define(function() {
                             function fx(type) {
                                 if (!type || type == 'unit') return unit;
                                 else if (type.type && map[type.type]) return map[type.type](type.args);
-                                else if (typeof type == 'object') return map['object'](type.tmpl, type.num || 1);
+                                else if (typeof type == 'object') return map['object'](type.tmpl, type.tmpl.length - type.tmpl.replace(/\%/g, '').length);
                                 else if (map[type]) return map[type];
                                 else if (typeof type == 'string' && type.indexOf('%') > -1) return map['custom'](type);
                                 return unit;

@@ -4621,7 +4621,12 @@
                         }),
                         { name: 'async', value: this.async.select('count', 'times', 'inject', 'eject', 'delay') },
                         (function times(x) {
-                            return new this.constructor(this.async.times(x, this.lazy(this.mv)));
+                            var t = parseInt(x || 0) || 0;
+                            if (t > 1) {
+                                return new this.constructor(this.async.times(x, this.lazy(this.mv)));
+                            }else {
+                                return this;
+                            }
                         }),
                         (function delay(ms) {
                             return new this.constructor(this.async.delay(this.mv, ms));

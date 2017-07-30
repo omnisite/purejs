@@ -32,18 +32,23 @@ define(function() {
 					}).ap(this.view().$el()));
 				},
 				render: function(arg) {
-					return this.$fn('replace').ap(this.view().tmpl('main')).run({ str: arg && arg.value ? arg.value : arg });
+					this.$fn('replace').ap(this.view().tmpl('main')).run({ str: arg && arg.value ? arg.value : (arg || '') });
+					this.highlight();
+					this.$fn('display').run('');
 				},
 				highlight: function() {
 					this.$fn('prism').run();
 				},
 				show: function(evt) {
-					var ref = evt.value.split('.');
-					var raw = this.find(ref.shift()).get(ref.join('.'));
-					var val = sys.get('utils.toString')(raw, true);
+					var ref, raw, val;
+					if (evt.value) {
+						ref = evt.value.split('.');
+						raw = this.find(ref.shift()).get(ref.join('.'));
+					}else {
+						raw = sys.klass(evt).proto();
+					}
+					val = sys.get('utils.toString')(raw, true);
 					this.render(val);
-					this.highlight();
-					this.$fn('display').run('');
 				},
 				hide: function() {
 					this.$fn('display').run('none');

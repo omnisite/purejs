@@ -87,14 +87,14 @@
                 if (((numArgs = numArgs || fn.length) < 2)) return fn;
                 else if (!bound && this != self) bound = this;
 
-                var countAll = countAllCalls !== false, ctx = bound && bound !== true ? bound : null;
-                return function f(args) {
+                var countAll = countAllCalls !== false;
+                return function f(args, ctx) {
                     return function $_curry() {
-                        if (bound === true && !ctx) ctx = this;
+                        if (bound === true && !args.length) ctx = this;
                         var argss = [].slice.apply(arguments);
                         if (countAll && !argss.length) argss.push(undefined);
                         if ((args.length + argss.length) < numArgs) {
-                            return f(args.concat(argss));
+                            return f(args.concat(argss), ctx);
                         }else {
                             return fn.apply(ctx, args.concat(argss));
                         }
@@ -193,10 +193,10 @@
                         return this.length < 3 ? this.toLowerCase() : this.replace(/\$/g, '').replace('.', '').replace(/(^[a-z]{1}|\-[a-z])/g, function($1){return $1.toUpperCase().replace('-','');});
                     };
                     String.prototype.toDash = function() {
-                        return this.length < 2 ? this.toLowerCase() : this.replace(/([A-Z])/g, function($1, p1, pos){return (pos > 0 ? "-" : "") + $1.toLowerCase();});
+                        return this.length < 2 ? this.toLowerCase() : this.replace(/\s+/g, '').replace(/([A-Z][^A-Z])/g, function($1, p1, pos){return (pos > 0 ? "-" : "") + $1.toLowerCase();});
                     };
                     String.prototype.toTypeCode = function() {
-                        return [ '$', this.toLowerCase().split('$').pop().toDash() ].join('');
+                        return [ '$', this.split('$').pop().toDash() ].join('').toLowerCase();
                     };
                     String.prototype.toTypeName = function() {
                         return this.replace(/-/g, '').replace('$', '').substr(0, 1).toUpperCase() + this.slice(1);
@@ -253,8 +253,9 @@
                     this.prototype.append = function() {
                         return (0*this.push.apply(this, [].slice.call(arguments).flat())) || this;
                     };  
-                    this.prototype.replace = function(f, i) {
-                        return this.splice(index, 1, this.at(i));
+                    this.prototype.replace = function(i, v) {
+                        this.splice(i || 0, 1, v);
+                        return this;
                     };
                     this.range = function(m, n) {
                         return Array.apply(null, Array(n - m + 1))
@@ -385,15 +386,19 @@
             (function CTOR() {
                 return [].slice.call(arguments);
             })(
-                (function(ctor, proto, make, named, base) {
+                (function(ctor, proto, make, extend, named, base) {
                     base.prototype.sys = this.fn.$const(this);
-                    return named.call(make.call(proto.call({ ctor: ctor, base: base })));
+                    extend.constructor.prototype.base = base;
+                    return named.call(
+                        make.call(
+                            extend.inherit(ctor, base,
+                                proto.call({ ctor: ctor, base: base, extend: extend }))));
                 }),
                 (function $CTOR(ctor, attrs, parent) {
                     this.ctor(ctor, attrs, parent);
                 }),
                 (function() {
-                    this.ctor.prototype = {
+                    return {
                         constructor: this.ctor,
                         of: function(ctor, attrs, parent) {
                             return new this(ctor, attrs, parent);
@@ -405,10 +410,12 @@
                         },
                         base: this.base,
                         sys: this.base.prototype.sys,
+                        inherit: this.extend.inherit,
+                        mixin: this.extend.mixin,
                         ctor: function(ctor, attrs, parent) {
                             this.$ctor = ctor;
-                            this.$code = this.constructor.name.toLowerCase();
-                            this.prop('id', this.makeID(ctor.name.replace('$', '').substr(0, 2).toUpperCase()));
+                            this.$code = '$'+this.constructor.name.replace('$', '').toDash().toLowerCase();
+                            this.prop('id', this.makeID(this.prop('prefix', ctor.name.replace('$', '').substr(0, 2).toUpperCase())));
                             this.init(ctor, attrs, parent);
                         },
                         init: function(ctor, attrs, parent) {
@@ -437,7 +444,7 @@
                         },
                         parent: function(name) {
                             var type = name ? this.find(name) : this;
-                            var prnt = this.find(type._parent);
+                            var prnt = type._parent == '$ctor' ? this.root() : (this.$store && this.$store._ref ? this.$store.parent('type') : this.find(type._parent));
                             var args = [].slice.call(arguments, 1);
                             return prnt ? (args.length ? prnt.get(args.join('.')) : prnt) : null;
                         },
@@ -445,9 +452,11 @@
                             return this.ctor.toDash();
                         },
                         add: function() {
-                            var parent = this.parent(), uid;
-                            if (parent && parent.$store) this.$store = parent.$store.child(this.$code);
-                            if (this.$store && (uid = this.$store.set('type', this).$store.uid()) && !this.$index.get(this.$code)) this.$index.set(this.$code, uid);
+                            var uid;
+                            if (this.$store && this.$store.child) {
+                                this.constructor.prototype.$store = this.$store.child(this.$code);
+                                if ((uid = this.$store.set('type', this).$store.uid()) && !this.$index.get(this.$code)) this.$index.set(this.$code, uid);
+                            }
                             return this;
                         },
                         update: function(base, ext, keys) {
@@ -467,42 +476,14 @@
                                 return xtnd(xtnd({}, base), ext || {});
                             }
                         },
-                        mixin: function(items, target, values) {
-                            if (!(items instanceof Array && typeof items == 'object'))
-                                return this.mixin(Object.keys(items), target, items)
-
-                            return items.reduce(function(r, v) {
-                                if (values && values[v]) {
-                                    r[v] = typeof values[v] == 'object' && values[v].value ? values[v].value : values[v];
-                                }else {
-                                    r[v.name] = typeof v == 'object' && v.value ? v.value : v;
-                                }
-                                return r;
-                            }, target);
-                        },
                         create: function(/* name, ctor */) {
+                            debugger;
                             var args = [].slice.call(arguments);
                             var ctor = args[0] instanceof Function ? args.shift() : (args.length > 1 ? args.pop() : null);
                             var name = typeof args[0] == 'string' ? args.shift() : (ctor ? ctor.name : this.$ctor.name);
                             var child = this.named(name);
                             child.prototype = { constructor: child, ctor: ctor };
                             return this.extend(child);
-                        },
-                        inherit: function(ctor, parent, props) {
-                            var F = function() {};
-                            F.prototype = parent.prototype;
-                            var proto = new F(), keys = Object.keys(ctor.prototype);
-                            if (props) this.mixin(props, proto);
-                            if (keys.length && ctor.prototype.constructor == ctor) {
-                                ctor.prototype = keys.reduce(function(r, k, i, o) {
-                                    r[k] = ctor.prototype[k];
-                                    return r;
-                                }, proto);
-                            }else {
-                                proto.constructor = ctor;
-                                ctor.prototype = proto;
-                            }
-                            return ctor;
                         },
                         make: function(ctor, proto) {
                             if (proto && proto instanceof Function) {
@@ -588,7 +569,7 @@
                         },
                         fromConstructor: function() {
                             var args = [].slice.call(arguments);
-                            return args.length > 1 ? this.$ctor[args.shift()].apply(this.$ctor, args) : this.$ctor[args.shift()].call(this.$ctor);
+                            return args.length > 1 ? this.$ctor[args.shift()].apply(this.$ctor, args) : this.$ctor[args.shift()].bind(this.$ctor);
                         },
                         item: function(name) {
                             var args = [].slice.call(arguments).join('.').split('.');
@@ -624,7 +605,6 @@
                             return ctor;
                         }
                     };
-                    return this.ctor;
                 }),
                 (function(set, makeWithPrefix, makeWithoutPrefix) {
                     return set(function(prefix, start) {
@@ -636,7 +616,7 @@
                         return function() {
                             this.prototype.makeID = makeID;
                             this.prototype.id = makeID('CT');
-                            this.prototype.kid = makeID('', 100000);
+                            this.prototype.base.prototype.kid = makeID('', 100000);
                             return this;
                         }
                     }),
@@ -649,6 +629,41 @@
                         return function() {
                             return counter.id++;
                         }
+                    })
+                ),
+                (function(ctor, mixin, inherit) {
+                    ctor.prototype = { constructor: ctor, mixin: mixin, inherit: inherit };
+                    return new ctor;
+                })(
+                    (function Extend() {}),
+                    (function(items, target, values) {
+                        if (!(items instanceof Array && typeof items == 'object'))
+                            return this.mixin(Object.keys(items), target, items)
+
+                        return items.reduce(function(r, v) {
+                            if (values && values[v]) {
+                                r[v] = typeof values[v] == 'object' && values[v].value ? values[v].value : values[v];
+                            }else {
+                                r[v.name] = typeof v == 'object' && v.value ? v.value : v;
+                            }
+                            return r;
+                        }, target);
+                    }),
+                    (function(ctor, parent, props) {
+                        var F = function() {};
+                        F.prototype = parent.prototype;
+                        var proto = new F(), keys = Object.keys(ctor.prototype);
+                        if (props) this.mixin(props, proto);
+                        if (keys.length && ctor.prototype.constructor == ctor) {
+                            ctor.prototype = keys.reduce(function(r, k, i, o) {
+                                r[k] = ctor.prototype[k];
+                                return r;
+                            }, proto);
+                        }else {
+                            proto.constructor = ctor;
+                            ctor.prototype = proto;
+                        }
+                        return ctor;
                     })
                 ),
                 (function() {
@@ -746,7 +761,7 @@
                         }),
                         (function find(nid, full) {
                             if (!this.check(nid)) return;
-                            var val = this.$locate(nid);
+                            var val = this._cache[nid] ? this.$load(this._cache[nid]) : this.$locate(nid);
                             return val ? (full ? val[nid%10] : val[nid%10][1]) : null;
                         }),
                         (function cached(nid, full) {
@@ -805,7 +820,7 @@
                             return this._uid;
                         }),
                         (function nid() {
-                            return ''+this._uid;
+                            return this.prefix+this._uid;
                         }),
                         (function of(ref, ctor, name) {
                             return ctor ? new ctor(ref, name) : new this.constructor(ref, name);
@@ -814,7 +829,7 @@
                             return value && value instanceof this.__;
                         }),
                         (function identifier(asArray, recalc) {
-                            return this._ref ? this._ref.identifier(asArray, recalc) : this._identifier(asArray, recalc);
+                            return this._ref && this._cid == this._ref._cid ? this._ref.identifier(asArray, recalc) : this._identifier(asArray, recalc);
                         }),
                         (function store() {
                             return this;
@@ -823,7 +838,7 @@
                             return this._map[key];
                         }),
                         (function keys(index) {
-                            return typeof index == 'number' ? this._ids[index] : this._ids;
+                            return typeof index == 'number' ? this._ids[index] : this._ids.slice(0);
                         }),
                         (function vals() {
                             return this._val;
@@ -841,7 +856,7 @@
                             while (ref && ref instanceof this.constructor) {
                                 ref = ref._ref;
                             }
-                            return key ? ref.get(key) : ref;
+                            return key ? ref.get(key) : ref.get();
                         }),
                         (function current() {
                             return this.get(this.get('key')||'vals');
@@ -901,7 +916,7 @@
                         (function clear(id) {
                             var node = this, vals;
                             if (!node || !node.length || !node.length()) {
-                                return node;
+                                return {};
                             }else if (!id) {
                                 vals = node.values();
                                 node._map = {};
@@ -910,8 +925,8 @@
                                 return vals;
                             }else {
                                 var idx = node._map[id],
-                                idxs = sys().get('utils.values')(node._map),
-                                keys = sys().get('utils.keys')(node._map),
+                                idxs = sys.get('utils.values')(node._map),
+                                keys = sys.get('utils.keys')(node._map),
                                 val  = [].concat(node._val.splice(0)),
                                 pos  = 0,
                                 del  = [],
@@ -937,9 +952,9 @@
                             }
                         }),
                         (function lookup(key, orElse) {
-                            return this.maybe(
-                              key ? (this.get(key)||(orElse && orElse instanceof Function ? orElse(this) : orElse)) : orElse
-                            );
+                            return this.maybe().map(function(store) {
+                                return key ? (store.get(key)||(orElse && orElse instanceof Function ? orElse(store) : orElse)) : orElse;
+                            });
                         }),
                         (function values(recur) {
                             var node = this;
@@ -969,12 +984,15 @@
                                     var k = s && s.keys ? s.keys(i) : v.name;
                                     if (s && s.is && s.is(v) && v._val.length) return v._val.bind(bind(f, (x[k] = {}), v));
                                     else if (v instanceof Array && v.length) return v.bind($fn);
-                                    return (x[k] = f(v, k, i, s && s._ref ? s.ref() : o) || v);
+                                    return (x[k] = f(v, k, i, s && s._ref ? (s._cid == s._ref._cid ? s.ref() : s) : o) || v);
                                 };
                             })
                         ),
                         (function find(value, cached) {
-                            return value ? this.db.retrieve(typeof value == 'object' ? (value._uid || value._id || value.uid) : value, cached) : null;
+                            var val = ('' + (typeof value == 'object' ? (value._uid || value._id || value.uid) : value)).split('.');
+                            var uid = val.shift();
+                            var res = uid ? this.db.retrieve(uid, cached) : null;
+                            return val.length && res ? res.get(val.join('.')) : res;
                         }),
                         (function info(/* recur, msg, opts */) {
                             var args  = [].slice.call(arguments);
@@ -1105,7 +1123,7 @@
                             }).filter(function(arg) { return arg; });
                         }),
                         (function makeArgs(func, args, source, isStore) {
-                            return func.apply(undefined, args.map(function(a, i, r) {
+                            return func.apply(source, args.map(function(a, i, r) {
                                 return isStore ? source.get(a.replace('$_', '')) : source[a.replace('$_', '')];
                             }));
                         })
@@ -1205,6 +1223,11 @@
                             return f(this);
                         }
                     }),
+                    (function atom(f, g) {
+                        return function() {
+                            return f(g(this));
+                        }
+                    }),
                     (function call1(f) {
                         return function(x) {
                             return f(this, x);
@@ -1272,13 +1295,35 @@
                             }
                         };
                     }),
+                    (function y(r) {
+                        return (function (f) {
+                            return f(f);
+                        })(function (f) {
+                            return r(function (x) {
+                                return f(f)(x);
+                            });
+                        });
+                    }),
                 // === ext/prop/tar/_1/maybe/tup etc etc === //
                     (function extend(target, source) {
                         var hasOwnProperty = Object.prototype.hasOwnProperty;
+                        source || (source = this);
+                        target || (target = {});
                         for (var propName in source) {
                             if (hasOwnProperty.call(source, propName)) {
                                 target[propName] = source[propName];
                             }
+                        }
+                        return target;
+                    }),
+                    (function update(target, source) {
+                        var hasOwnProperty = Object.prototype.hasOwnProperty;
+                        source || (source = this);
+                        target || (target = {});
+                        for (var propName in source) {
+                            if (hasOwnProperty.call(target, propName)) continue;
+                            else if (!hasOwnProperty.call(source, propName)) continue;
+                            else target[propName] = source[propName];
                         }
                         return target;
                     }),
@@ -1302,6 +1347,9 @@
                           };
                         };
                     }),
+                    (function fn(x) {
+                        return x && x instanceof Function ? x() : x;
+                    }),
                     (function path(key, value) {
                         return !key ? this : key.split('.').reduce(function(result, key, idx, keys) {
                             if (!key || !result) {
@@ -1319,12 +1367,13 @@
                             }else if ((key == 'fn' || key == '$fn') && result[keys[idx+1]] instanceof Function) {
                                 result = result;
                             }else if (result.isStore) {
-                                result = result.get(key) || (value ? result.child(key) : null);
+                                if (key.substr(0, 1) == '%') key = result.get(key.slice(1));
+                                result = result.get(key) || (result.ref() && result.ref().get(key)) || (value ? result.child(key) : ((keys.length - idx) > 1 ? null : result[key]));
                             }else if (result instanceof Array) {
                                 result = result.get(key);
                             }else if (typeof result == 'object') {
                                 if (key == '$fn') key = 'fn';
-                                if (result && result.get) result = result.get(key) || result[key] || result[key.replace('-', '.')];
+                                if (false && result && result.get) result = result.get(key) || result[key] || result[key.replace('-', '.')];
                                 else result = result[key] || result[key.replace('-', '.')];
                             }
                             return result;
@@ -1334,7 +1383,7 @@
                     (function identifier(key) {
                         function calcOnce(node) {
                             var path = [], parent = node;
-                            while ((parent = parent[key])) {
+                            while ((parent = parent.parent())) {
                                 path.unshift(parent._cid);
                             };
                             path.push(node._cid);
@@ -1635,9 +1684,9 @@
                                     var lines = [];
                                     var ctor  = value.constructor;
                                     var name  = ctor.name;
-                                    lines.push(toString(ctor));
-                                    if (ctor.of) lines.push(name + '.of = ' + toString(ctor.of));
-                                    if (ctor.pure) lines.push(name + '.pure = ' + toString(ctor.pure));
+                                    lines.push(toString(ctor) + ';');
+                                    if (ctor.of) lines.push(name + '.of = ' + toString(ctor.of) + ';');
+                                    if (ctor.pure) lines.push(name + '.pure = ' + toString(ctor.pure) + ';');
                                     each(keys(value.constructor.prototype), function(key) {
                                         var text = toString(value[key], false);
                                         if (text) lines.push(name + '.prototype.' + key + ' = ' + text + ';');
@@ -1677,7 +1726,9 @@
                             return true;
                         };
                         return function isEqual(a, b) {
-                            if (a == null || b == null) {
+                            if (a == null && b == null) {
+                                return true;
+                            }else if (a == null || b == null) {
                                 return false;
                             }else if (a instanceof Array) {
                                 return b instanceof Array && a.length == b.length ? a.reduce(function(r, v, i) {
@@ -1706,6 +1757,7 @@
                         this.$$init(opts);
                     },
                     ext: [
+                    // === INIT === //
                         (function $$init(opts) {
                             this._id       = this.ctor.$id = this.id();
                             this._cid      = this.extractID(opts);
@@ -1720,24 +1772,28 @@
                                 if (store && this.test(store)) {
                                     this._store = store;
                                     this._store.ref(this);
+                                }else if (this._children) {
+                                    this._store = this._parent.children()._store.add(this._cid, this);
                                 }else {
                                     this._store = this._parent._store.add(this._cid, this);
                                 }
-                                if (this._parent._events && (!this._events || this._parent._events._id != this._events._id)) {
+                                if (this._parent._events && !this._events) {
                                     this._events = this._parent._events;
                                 }
 
                                 this._level  = (this._parent._level  || (this._parent._level  = 0)) + 1;
                                 this._offset = (this._parent._offset || (this._parent._offset = 0)) + (opts.offset || 0);
                             }else {
-                                this._store  = this._store;
+                                this._store  = opts.store || this._store;
                                 this._store.ref(this);
                                 this._level  = 0;
                                 this._offset = opts.offset || 0;
                             }
+
+                            if (this._children) this.node(this._children);
                         }),
                         (function connect() {
-                            this.listener = this.parent().listener;
+                            this.listener = this.parent().listener || this.listener;
                             if (!this._events) this._events = this.parent()._events.child({ name: 'events', parent: this });
                             if (!this.dispatcher) this.dispatcher = this.listener.run(this);
                             return this;
@@ -1768,7 +1824,7 @@
                             return this._store._uid;
                         }),
                         (function nid() {
-                            return ''+this._store._uid;
+                            return this.prefix+this._store._uid;
                         }),
                         (function cid() {
                             return this._cid;
@@ -1799,7 +1855,9 @@
                                 else if (key && typeof key == 'string' && (node.has(key))) return node._store.get(key);
                                 else if (key && typeof key == 'number') return node._store.at(key);
                                 else if (key && key.indexOf && key.indexOf('.') > 0) return node._store.path(key);
-                                else if (key && key instanceof Array) return key.length > 1 ? node._store.path(key) : (key.length ? node.get(key.slice(0).shift()) : node);
+                                else if (key && node._children && node.has(node._children)) {
+                                    return node.get(node._children).get(key);
+                                }else if (key && key instanceof Array) return key.length > 1 ? node._store.path(key) : (key.length ? node.get(key.slice(0).shift()) : node);
                                 else return key ? undefined : (node._ref || node);
                             })
                         ),
@@ -1831,30 +1889,27 @@
                             return this.getEventListener(lstnr.hid) || this._lstnrs.set(lstnr.hid, lstnr);
                         }),
                         (function observe(/* [ [ instance ], name, selector, handler ] */) {
-                            if (!this.dispatcher) this.connect();
                             var args = [].slice.call(arguments);
                             var inst = typeof args[0] != 'string' ? args.shift() : this;
+                            if (!inst.dispatcher) inst.connect();
                             var hndl = args.pop();
-                            args.push(typeof hndl == 'string' ? inst.func(hndl) : hndl);
-                            return this.setEventListener(this.dispatcher.addEventListener.apply(this.dispatcher, [ inst, 'store' ].concat(args)));
-                        }),
-                        (function once() {
-                            var args = [].slice.call(arguments);
-                            return this.observe.apply(this, args.slice(0, -1).append({ once: true }, args.pop()));
+                            args.push(typeof hndl == 'string' ? this.handler(hndl) : hndl);
+                            return inst.setEventListener(inst.dispatcher.addEventListener.apply(inst.dispatcher, [ inst, 'store' ].concat(args)));
                         }),
                         (function pipe(source, args) {
-                            if (this._started > 1) {
-                                this._events.emit(source, args);
+                            if (!source._events || !source._events._active || !source._events._active.length) {
+                            }else if (this._started > 1) {
+                                source._events.emit(source, args);
                             }else {
                                 this.buffer.push([ source, args ]);
                             }
                         }),
                         (function start() {
                             if (!this._started && (++this._started)) {
-                                sys().log([ '!START!', this.identifier() ]);
+                                sys.run().log([ '!START!', this.identifier() ]);
                             }else if (this._started == 1 && ++this._started) {
                                 while (this.buffer.length) {
-                                    this._events.emit(this.buffer[0][0], this.buffer[0][1]);
+                                    this.pipe(this.buffer[0][0], this.buffer[0][1]);
                                     this.buffer.shift();
                                 }
                             }
@@ -1870,15 +1925,21 @@
                         }),
                     // === NODE === //
                         (function lookup(key, orElse) {
-                            return this.maybe(
-                              key ? (this.get(key)||(orElse && orElse instanceof Function ? orElse(this) : orElse)) : orElse
-                            );
+                            return this.maybe().map(function(node) {
+                                return key ? (node.get(key)||(orElse && orElse instanceof Function ? orElse(node) : orElse)) : orElse;
+                            });
                         }),
                         (function map(f) {
                             return this._store.map(f);
                         }),
                         (function filter(f) {
                             return this._store.vals().filter(f);
+                        }),
+                        (function reduce(f, r) {
+                            return this._store.keys().reduce(function(r, k, i) {
+                                r.res = f(r.res, r.node.get(k), k, r.node);
+                                return r;
+                            }, { res: r, node: this }).res;
                         }),
                         (function parse() {
                             return this._store.parse.apply(this, arguments);
@@ -1896,7 +1957,7 @@
                             return this._level - (offset ? (offset._level || this._offset) : this._offset);
                         }),
                         (function relative(other) {
-                            return this.identifier(true).slice(other.level(this));
+                            return this.identifier(true).slice(this.is(other) ? other.level(this) : other.level);
                         }),
                     // === CHILD ETC === //
                         (function parent(key, value) {
@@ -1970,9 +2031,10 @@
                     // === FIND ETC === //
                         (function equals(value) {
                             if (!value) return false;
+                            else if (typeof value == 'number') return this.uid() === value; 
                             else if (typeof value == 'string') {
-                                if (value.isLowerCase()) return this.cid() === value;
-                                else if (value.replace(/[^0-9]/g, '') == value) return this.uid() === parseInt(value); 
+                                if (value.replace(/[^0-9]/g, '') == value) return this.uid() === parseInt(value);
+                                else if (value.isLowerCase()) return this.cid() === value;
                                 else return this.cid() === value;
                             }
                             return this.is(value) && this.uid() === value.uid() ? true : false;
@@ -1991,6 +2053,9 @@
                         }),
                         (function link() {
                             return this.store().link.apply(this.store(), [].slice.call(arguments));
+                        }),
+                        (function vmap() {
+                            return this.store().vmap.apply(this.store(), [].slice.call(arguments));
                         }),
                         (function haslink() {
                             return this.store().haslink.apply(this.store(), [].slice.call(arguments));
@@ -2034,6 +2099,151 @@
                         ),
                         (function combine(f, a) {
                             return sys.get('async.combine')(this.store(), f, a);
+                        }),
+                    // === CONFIGURE === //
+                        (function state(key, value) {
+                            return (this._state || (this._state = this.node('state'))).acc(key, value);
+                        }),
+                        (function events() {
+                            var comp = this, events, list = [];
+                            if ((events = this.get('data.events.data'))) {
+                                list.push(events.store().bind(function(method, evt) {
+                                    var parts = evt.split(':').append(comp.handler(method));
+                                    var slctr = parts[1].split('.'), node;
+                                    if (slctr.length > 1
+                                      && (node = comp.get(slctr.shift()))
+                                        && node instanceof comp.cmpt) {
+                                        comp.observe.apply(comp, parts.replace(1, slctr.join('.')).prepend(node));
+                                    }else {
+                                        comp.observe.apply(comp, parts);
+                                    }
+                                }));
+                            }
+                            if ((events = this.get('data.events.dom'))) {
+                                list.push(events.store().bind(function(method, evt) {
+                                    return comp.on.apply(comp, evt.split(':').append(method.split('|')));
+                                }));
+                            }
+                            if ((events = this.get('data.proxy.data'))) {
+                                list.push(events.store().bind(function(method, evt) {
+                                    return comp.proxy.apply(comp, evt.split(':').append(method));
+                                }));
+                            }
+                            if ((events = this.get('data.proxy.dom'))) {
+                                list.push(events.store().bind(function(method, evt) {
+                                    return comp.proxy.apply(comp, evt.split(':').append(method));
+                                }));
+                            }
+                            if (!list.length) {
+                                comp.parse();
+                                comp.start();
+                            }
+                            return list.length ? list.fmap(function() {
+                                comp.parse();
+                                comp.start();
+                                return comp.main() || comp;
+                            }) : (this.main() || this);
+                        }),
+                        (function proxy(name, selector, path, call) {
+                            return ((this._proxy || (this._proxy = this.node('proxy'))).get(name)
+                                || (this._proxy.child(name))).set(selector.split('.').first(), { selector: selector, path: path, call: !!call });
+                        }),
+                        (function $proxy(evt, proxy) {
+                            if (proxy && (evt.currentTarget || (evt.currentTarget = evt.target)).matches(proxy.selector))
+                                this.parent().emit('change', proxy.path, ('' + (evt.value || evt.target.value || evt.target.id || evt.target.innerText || '')).toLowerCase(), evt.value || evt.currentTarget.value || evt.currentTarget.innerText || '');
+                        }),
+                        (function control() {
+                            return this.get([ 'data.control' ].concat([].slice.call(arguments)).join('.'))
+                                || this.klass('Obj').of(this.conf.control ? this.extend({}, this.conf.control, true) : {}, this);
+                        }),
+                        (function $handler(evt) {
+                            if (this._proxy && (evt.currentTarget || (evt.currentTarget = evt.target)))
+                                this.$proxy(evt, this.get('proxy', evt.type, evt.currentTarget.localName));
+                            return evt;
+                        }),
+                        (function handler(fn) {
+                            var ctx = { store: this, fn: fn, ref: fn.indexOf('.') > 0 ? fn.split('.').slice(0, -1).join('.').replace(/\.fn$/, '') : '' };
+                            return function(evt, hndl) {
+                                return ((ctx.run || (ctx.run = (ctx.ref ? ctx.store.get(ctx.fn) : ctx.store[ctx.fn]))) || unit).call(
+                                    (ctx.ctx || (ctx.ctx = (ctx.ref ? ctx.store.get(ctx.ref) : ctx.store))),
+                                    ctx.store.$handler(evt), hndl
+                                );
+                            }
+                        }),
+                        (function binding(evt) {
+                            if (evt.src == 'dom') {
+                                if (evt.target && evt.currentTarget) {
+                                    var path = evt.currentTarget.getAttribute('data-bind-path');
+                                    var name = evt.target.getAttribute('data-bind-name') || evt.target.id;
+                                    return this.lookup(path).map(function(node) {
+                                        return node.set(name, evt.target.value);
+                                    });
+                                }
+                            }else if (evt.src == 'data' && this.view()) {
+                                return this.view().maybe().map(function(view) {
+                                    return view.$el('[data-bind-path]').chain(function() {
+                                        return view;
+                                    }) || view.closest('[data-bind-path]');
+                                }).chain(function(view) {
+                                    return view.binding(evt);
+                                });
+                            }
+                        }),
+                        (function extend(base, ext, keys) {
+                            return this.ctor.update(base, ext, keys);
+                        }),
+                        (function configure(conf) {
+                            conf || (conf = {});
+                            var evts = this.get('data.events');
+
+                            var opts = this._opts || (this._opts = this.node('opts').parse(this.conf.opts || {}));
+                            var data = this._data || (this._data = this.node('data').parse(this.xtnd({ id: this.uid() }, this.conf.def || {}), true));
+
+                            if (conf.opts) this._opts.parse(conf.opts);
+
+                            var cdata = conf.data || {};
+                            if (conf.tmpl) cdata.tmpl = conf.tmpl;
+                            else if (!data.get('tmpl')) cdata.tmpl = {};
+                            if (conf.proxy) cdata.proxy = conf.proxy;
+                            if (conf.events) cdata.events = conf.events;
+                            if (conf.control) cdata.control = conf.control;
+
+                            if (this.conf.data || conf.data || cdata.tmpl) {
+
+                                if (!this.conf.data) this.conf.data = {};
+                                if (this.opts('tmpl') && (cdata.tmpl || this.conf.data.tmpl)
+                                    && (cdata.tmpl || !data.get('tmpl')))
+                                        this.data({ tmpl: this.xtnd({ attr: this.konst({ 'class' : this.get('type').concat(' ', this.origin()) }) }, this.extend(this.conf.data.tmpl, cdata.tmpl)) });
+
+                                if ((this.conf.data.events || cdata.events)
+                                    && (cdata.events || !data.get('events')))
+                                        this.data({ events: this.extend(this.conf.data.events, cdata.events) });
+                                else if ((this.conf.events || conf.events)
+                                    && (conf.events || !data.get('events')))
+                                        this.data({ events: this.extend(this.conf.events, conf.events) });
+
+                                if ((this.conf.proxy || conf.proxy)
+                                    && (conf.proxy || !data.get('proxy')))
+                                        this.data({ proxy: this.extend(this.conf.proxy, conf.proxy) });
+
+                                if ((this.conf.control || conf.control)
+                                    && (conf.control || !data.get('control')))
+                                        this._data.set('control', this.klass('Obj').of(this.extend(this.conf.control, conf.control, true), this));
+                            }
+                            if (!evts && this.get('data.events')) return this;
+                            if ((cdata.main || (this.conf.data && this.conf.data.main))
+                                && (cdata.main || !data.has('main') || !data.get('main').length()))
+                                    this.data({ main: this.extend(this.conf.data.main, cdata.main) });
+
+                            if (conf.data) this._data.parse(conf.data, 1);
+
+                            return this;
+                        }),
+                        (function data(v1, v2) {
+                            return v1 ? (typeof v1 == 'object' ? this._data.parse(v1, 2) : this._data.acc(v1, v2)) : this._data.values(true);
+                        }),
+                        (function opts(v1, v2) {
+                            return v1 ? (typeof v1 == 'object' ? this._opts.parse(v1, 2) : this._opts.acc(v1, v2)) : this._opts.values(true);
                         })
                     ],
                     attrs: [
@@ -2065,17 +2275,22 @@
                         };
                     },
                     init: function(type, klass, sys) {
-                        var store = klass.prop('_store', sys.root), utils = store.get('utils');
+                        var store  = sys.root;
+                        var utils  = store.get('utils');
+                        var $store = klass.find('$store');
                         klass.prop('identifier', utils.get('identifier')('_parent'));
+                        $store.prop('_identifier', utils.get('identifier')('_ref'));
+                        klass.prop('conf', { opts: {}, def: {} });
+                        klass.prop('xtnd', utils.get('extend'));
                         klass.prop('test', store.is.bind(store));
                         klass.prop('isStore', true);
                         klass.prop('set', type.makeSet(utils.get('isEqual')));
                         klass.prop('func', klass.fn = utils.get('func'));
-                        klass.prop('konst', utils.get('$const'));
+                        klass.prop('konst', $store.prop('konst', utils.get('$const')));
                         klass.prop('bin', utils.get('pass')(utils.get('bind')));
-                        klass.prop('path', klass.find('$store').prop('path', utils.get('path')));
+                        klass.prop('path', $store.prop('path', utils.get('path')));
 
-                        var root = sys.root = klass.of('root');
+                        var root = sys.root = klass.of({ name: 'root', store: store });
                         var ctor = sys.ctor = this;
                         //var ext  = root.child('ext');
                         store.map(function $fn(v,k,i,o) {
@@ -2089,21 +2304,19 @@
         // === Functor === //
             (function Functor() {
                 return {
-                    klass: function Functor() {
-                        this.id = this.id();
-                        this.$$init.apply(this, arguments);
+                    klass: function Functor(x) {
+                        this.id = this.ctor.$id = this.id();
+                        this.$$init(x);
                     },
                     ext: [
-                        (function $$init(mv) {
-                            this._x = mv;
-                        }),
-                        (function $count(next, type) {
-                            next[type] = this[type]+'$';
-                            next['$$path'] = type+'<<'+(this._id || this.id)+this['$$path'];
-                            return next;
+                        (function $$init(x) {
+                            this._x = x;
                         }),
                         (function is(value) {
                             return value ? (value instanceof this.constructor || value.__ === this.__) : false;
+                        }),
+                        (function test(value) {
+                            return value ? (value instanceof this.constructor || value instanceof this.__) : false;
                         }),
                         (function attr(name, value) {
                             this[name] = value;
@@ -2141,21 +2354,26 @@
                         return _([].slice.call(arguments, 1));
                     })(
                         (function(args) {
-                            return args.shift().call(undefined, args.shift(), args.shift().call(undefined, args));
+                            return args.shift().call(undefined, args.shift(), args.shift().call(undefined, args.shift(), args));
                         }),
                         (function(args, ofN) {
                             return function of() {
-                                return this.$count(ofN(this, args(this, [].slice.call(arguments))), '$$of');
+                                return ofN(this, args(this, [].slice.call(arguments)));
                             }
                         }),
                         (function args(ctx, a) {
-                            if (a.length && typeof a[a.length-1] == 'string' && typeof ctx[a[a.length-1]] == 'string') a.pop();
+                            if (!a.length || typeof a[a.length-1] != 'string' || typeof ctx[a[a.length-1]] != 'string') a.push('$$of');
                             return a;
                         }),
-                        (function($$_off) {
+                        (function($count, $off) {
                             return function ofN(ctx, args) {
-                                return $$_off[args.length].apply(ctx, args);
+                                return $count(args.pop(), ctx, $off[args.length].apply(ctx, args));
                             }
+                        }),
+                        (function $count(type, curr, next) {
+                            next[type] = curr[type]+'$';
+                            next['$$path'] = type+'<<='+(curr._id || curr.id)+curr['$$path'];
+                            return next;
                         }),
                         (function of0() {
                             return new this.constructor();
@@ -2184,8 +2402,9 @@
                     return { klass: klass, ext: ext, attrs: attrs };
                 }
             })(
-                (function Compose() {
-                    this.$super.apply(this, arguments);
+                (function Compose(f) {
+                    this.id = this.ctor.$id = this.id();
+                    this.$$init(f);
                 }),
                 (function() {
                     return [].slice.call(arguments);
@@ -2211,33 +2430,33 @@
                             };
                         })
                     ),
-                    (function $$init(x) {
-                        this._x = this.$$cmps(x);
+                    (function $$init(f) {
+                        this._f = this.$$cmps(f);
                     }),
-                    (function $$cmps(x) {
-                        return !x && typeof x == 'undefined' ? unit : (x instanceof Function && x.length > 1 ? this.fn.curry(x) : x);
+                    (function $$cmps(f) {
+                        return !f && typeof f == 'undefined' ? unit : (f instanceof Function && f.length > 1 ? this.fn.curry(f) : f);
                     }),
                     (function ap(monad) {
-                        return monad.map ? monad.map(this.$fn(this._x)(unit)) : this.ap(this.of(monad));
+                        return monad.map ? monad.map(this.$fn(this._f)(unit)) : this.ap(this.of(monad));
                     }),
                     (function apply(monad) {
                         return monad.ap(this);
                     }),
                     (function map(f) {
-                        return this.of(this.$fn(this._x)(f));
+                        return this.of(this.$fn(this._f)(f));
                     }),
-                    (function bimap(f, g) {
-                        return this.of(this.$fn(this._x)(f)(g));
+                    (function chain(v) {
+                        return this.$fn(this._f)(unit)(v);
                     }),
                     (function run(v) {
-                        return this.chain(unit)(v);
+                        return this.chain(v);
                     })
                 ),
                 (function() {
                     return [].slice.call(arguments);
                 })(
-                    (function of(x) {
-                        return new this(x);
+                    (function of(f) {
+                        return new this(f);
                     })
                 )
             ),
@@ -2245,9 +2464,9 @@
             (function() {
                 return {
                     parent: 'Functor',
-                    extend: 'Compose',
-                    klass: (function Cont(mv, mf) {
-                        this.$super.call(this, mv, mf);
+                    klass: (function Cont(x, f) {
+                        this.id = this.ctor.$id = this.id();
+                        this.$$init(x, f);
                     }),
                     ext: [
                         (function $$init(x, f) {
@@ -2260,7 +2479,7 @@
                             }
                         }),
                         (function $pure(f) {
-                            return this.mf.name == this.constructor.prototype.mf.name ? f : this.$fn(this.mf)(f);
+                            return this.mf.name == this.constructor.prototype.mf.name ? f : this.$fn.compose(this.mf)(f);
                         }),
                         (function $map(f) {
                             return function(v) {
@@ -2270,10 +2489,10 @@
                             }
                         }),
                         (function map(f) {
-                            return this.of(this.mv, this.$fn(this.$pure(this.$map(f)))(this.$cast), '$$map');
+                            return this.of(this.mv, this.$fn.compose(this.$pure(this.$map(f)))(this.$cast), '$$map');
                         }),
                         (function $bind(mv, mf) {
-                            return this.of(mv, this.$fn(mf)(this.$cast), '$$bind');
+                            return this.of(mv, this.$fn.compose(mf)(this.$cast), '$$bind');
                         }),
                         (function bind(f) {
                             return this.$bind(this.$cont(), f);
@@ -2379,6 +2598,7 @@
                         proto.$cont   = type.$cont(ctor);
                         proto.is      = ctor.is = type.is(ctor);
                         proto.resolve = type.resolve(ctor);
+                        proto.$fn = { compose: klass.find('Compose').prop('$fn') };
                     }
                 };
             }),
@@ -2391,9 +2611,6 @@
                     ext: [
                         (function $$init(f) {
                             this._f = f;
-                        }),
-                        (function of(f) {
-                            return this.$count(new this.constructor(f || unit), '$$of');
                         }),
                         (function ask() {
                             return this.of(unit);
@@ -2471,6 +2688,7 @@
                         klass.prop('$store', klass.get('root'));
                         klass.prop('$pure',  klass.get('root.sys.$fn.pure'));
                         klass.prop('$saved', klass.$store.node('$$saved').uid());
+                        klass.prop('of', this.find('Functor').prop('of'));
                     }
                 };
             })
@@ -2674,6 +2892,40 @@
                     return $_array([].slice.call(arguments));
                 }
             }),
+            (function $_parallel($_array) {
+                return function parallel() {
+                    var args = [].slice.call(arguments);
+                    return function $_pure(succ, fail) {
+                        $_array(args)(function(_args) {
+                            return succ(_args);
+                        }, fail);
+                    };
+                }
+            }),
+            (function(run, series) {
+                return function $_series() {
+                    return series(this.parent('utils.y')(run));
+                }
+            })(
+                (function(loop) {
+                    return function run(xs) {
+                        xs[0][0].length == 0 ? xs.pop().splice(0, 2).shift()(xs.shift().pop()) : xs[0][0][0](function (r) {
+                            xs[0][1][xs[0][1].length] = r;
+                            xs[0][0].shift();
+                            return loop(xs);
+                        }, xs[1][1]);
+                    }
+                }),
+                (function(seriesY) {
+                    return function series() {
+                        return (function(xs) {
+                            return function $_pure(succ, fail) {
+                                return seriesY([ [ xs.slice(0), new Array(xs.length) ], [ succ, fail ] ]);
+                            };
+                        })([].slice.call(arguments));
+                    }
+                })
+            ),
         // === XHR === //
             (function newxhr() {
                 var _xhr = false;
@@ -2737,6 +2989,8 @@
                                     script = document.createElement("script");
                                     if (ext == 'tmpl') {
                                         script.type = 'text/template';
+                                    }else if (ext == 'js') {
+                                        script.type = 'text/javascript';
                                     }
                                     script.src = url;
                                     script.setAttribute('data-state', 'init');
@@ -2835,7 +3089,7 @@
                 script({ url: 'core/worker.js',  ref: store.child('worker').uid() }),
                 script({ url: 'core/effect.js',  ref: store.child('effect').uid() }),
                 script({ url: 'core/config.js',  ref: store.child('config').uid() }),
-                script({ url: 'core/storage.js', ref: store.child('storage').uid() })
+                script({ url: 'core/storage.js', ref: store.child('storage').uid()})
             )(function() {
                 store.get('app.cont').run();
             });

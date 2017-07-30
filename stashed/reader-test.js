@@ -1,4 +1,4 @@
-var modal = sys.run().eff('sys.loader.component').run('components/modal/modal').bind(function(x) {
+var modal = sys.eff('sys.loader.component').run('components/modal/modal').bind(function(x) {
 
   return x.create({ name: 'test', parent: sys.get('components.home') }).pure();
 
@@ -28,7 +28,7 @@ var modal = sys.run().eff('sys.loader.component').run('components/modal/modal').
             });
           }).ap(x.io()).run();
 
-var modal = sys.run().eff('sys.loader.component').run('components/modal/modal').bind(function(x) {
+var modal = sys.eff('sys.loader.component').run('components/modal/modal').bind(function(x) {
 
   return x.create({ name: 'test', parent: sys.get('components.home') }).pure();
 

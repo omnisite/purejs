@@ -7,7 +7,7 @@
               <span class="glyphicon glyphicon-remove"></span><span>Close</span>
             </button>
           {{??}}
-            <button type="button" data-value="close">&times;</button>
+            <button type="button" class="close" data-value="close">&times;</button>
           {{?}}
           <h4 class="modal-title" data-bind-name="title">{{=it.title}}</h4>
         </div>
@@ -34,11 +34,35 @@
   .modal .modal-dialog {
       box-sizing: content-box;
   }
+  .modal.inline {
+      position: relative; height: 100%;
+  }
+  .modal.inline .modal-dialog {
+      margin: 0 15px 0 0; width: inherit; height: 100%;
+  }
+  .modal.inline .modal-header {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; z-index: 1000;
+  }
+  .modal.inline .modal-body {
+      height: 100%;
+  }
+  .modal.inline .modal-content {
+      box-shadow: none; height: 100%;
+      padding-top: 55px; padding-bottom: 75px;
+  }
   .modal .btn-default {
       min-width: 80px; float: right; margin: 5px;
   }
   .modal-body form,
   .modal-body .form {
       position: static;
+  }
+  .modal-body .tabs.panel {
+      border: none; box-shadow: none;
+  }
+  .modal-body .tabs ul {
+      top: 31px;
   }
 </script>

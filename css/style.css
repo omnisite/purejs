@@ -12,7 +12,9 @@ div, nav, ul, li {
     border-radius: 0 !important;
     font-size: 16px;
 }
-
+a {
+  -webkit-user-drag: none;
+}
 #root {
 	height: 100%;
 	width: 100%;
@@ -23,6 +25,9 @@ div, nav, ul, li {
   height: 100%;
   width: 100%;
   overflow: hidden;
+}
+body.home > nav {
+  display: none;
 }
 .cell.row {
   margin: 0;
@@ -37,10 +42,12 @@ div, nav, ul, li {
 .find #r0c2.col {
   height: 100%; overflow-y: auto;
 }
-.application #r0c2,
-.types #r0c2 {
+.application #r0c2 {
   height: 100%;
   overflow-y: auto;
+}
+.types #r0c2 {
+  height: 100%;
 }
 .application .accordion,
 .types .accordion {

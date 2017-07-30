@@ -23,13 +23,11 @@ define(function() {
 						var module = sys.get('components.animation');
 						var grid   = app.deps('components.grid').create({ name: 'grid', parent: module });
 						var form   = app.deps('components.form').create({ name: 'form', parent: module });
-						var bezier = app.deps('core.dom.makefn');
 
-						return [ grid.pure(), form.pure(), bezier.cont() ].lift(function(g, f, b) {
+						return [ grid.pure(), form.pure() ].lift(function(g, f, b) {
 
 							app.deps('components').grid = g;
-							app.deps('components').form = f.control('main').fields('data.main', app.fields);
-							app.deps('core.dom').makefn = b;
+							app.deps('components').form = f.control('main').fields(app.fields, 'data.main');
 
 							return app;
 
@@ -77,13 +75,13 @@ define(function() {
 					},
 					run: function(o) {
 						var opts = o && typeof o == 'object' ? o : { ms: 500, st: 20, rpt: 1 };
+						var xtnd = sys.get('utils.extend');
 						var list = [];
-						var anim = { base: sys.run().eff('dom.elements.animate').run().run({
+						var anim = { base: sys.eff('dom.elements.animate').run().run({
 							duration: parseInt(opts.ms)||500,
 							toggle: false, easing: opts.easing||'swing'
 						}), list: list };
 						var base = anim.base;
-						var xtnd = sys.get('utils.extend');
 
 						list.push({ prop: 'opacity', from: 0, to: 1, duration: '90%' });
 						list.push({ prop: 'opacity', from: 1, to: 0, delay: 120, init: false });
@@ -108,7 +106,7 @@ define(function() {
 								return xtnd(res, { delay: ((res.delay||0)+(vals.delay*(parseInt(opts.st)||20)))+'%' });
 							});
 						}).flatten().chain(function(result) {
-							return sys.klass('Control').of(base.apply(base, result)).lift(function(anim, kont) {
+							return sys.klass('Control').of(base(result)).times(opts.rpt).lift(function(anim, kont) {
 								return anim(kont);
 							});
 						});
@@ -116,17 +114,16 @@ define(function() {
 				}
 			},
 			fields: {
-				ms:     { elem: 'input',    label: 'Duration', type: 'text',  placeholder: 'duration' },
-				st:     { elem: 'input',    label: 'Stagger',  type: 'text',  placeholder: 'stagger'  },
-				rpt:    { elem: 'input',    label: 'Repeat',   type: 'text',  placeholder: 'repeat'   },
-				rows:   { elem: 'input',    label: 'Rows',     type: 'text',  placeholder: 'rows'     },
-				cols:   { elem: 'input',    label: 'Columns',  type: 'text',  placeholder: 'cols'     },
-				easing: { elem: 'dropdown', label: 'Easing',   data: 'options:effects.dom.calc.bezier.fn.keys', options: [ '', 'linear', 'swing' ] },
-				run:    { elem: 'button',   label: 'Run',      type: 'button' }
+				ms:     { type: 'number', elem: { tag: 'input',  label: 'Duration', type: 'text',  placeholder: 'duration' } },
+				st:     { type: 'number', elem: { tag: 'input',  label: 'Stagger',  type: 'text',  placeholder: 'stagger'  } },
+				rpt:    { type: 'number', elem: { tag: 'input',  label: 'Repeat',   type: 'text',  placeholder: 'repeat'   } },
+				rows:   { type: 'number', elem: { tag: 'input',  label: 'Rows',     type: 'text',  placeholder: 'rows'     } },
+				cols:   { type: 'number', elem: { tag: 'input',  label: 'Columns',  type: 'text',  placeholder: 'cols'     } },
+				easing: { type: 'string', elem: { tag: 'select', label: 'Easing',   data: 'options:effects.dom.calc.bezier.fn.keys', options: [ '', 'linear', 'swing' ] } },
+				run:    { type: 'action', elem: { tag: 'button', label: 'Run',      type: 'button' } }
 			},
 			events: {
 				data: {
-					'change:state.attach':'onAttach',
 					'change:form.run':'animate'
 				}
 			}

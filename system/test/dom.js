@@ -32,7 +32,7 @@ define(function() {
 
 					base: function() {
 
-						var elem = sys.run().eff('dom.elements.make').init();
+						var elem = sys.eff('dom.elements.make').init();
 						var div  = elem.run('div').run();
 
 						var getid = sys.klass('IO').pure(sys().fn.id);
@@ -47,7 +47,7 @@ define(function() {
 
 						var makediv = div.ap(makeattrs);
 
-						var tmpl = sys.run().eff('io.request.script').map(function(x) {
+						var tmpl = sys.eff('io.request.script').map(function(x) {
 						  return x.get('IO') || x.set('IO', x.klass('IO').of(x.store()).lift(function(node, key) {
 						      return node.get(key);
 						  }));
@@ -55,7 +55,7 @@ define(function() {
 
 						var tmplbase = tmpl.run({url:'templates/base.tmpl'});
 
-						var html = sys.run().eff('dom.elements.html').init();
+						var html = sys.eff('dom.elements.html').init();
 
 						return {
 
@@ -70,7 +70,7 @@ define(function() {
 							return comps.lookup(path);
 						});
 
-						var test = sys.run().eff('dom.calc.getSize').ap(comp.map(function(cmp) {
+						var test = sys.eff('dom.calc.getSize').ap(comp.map(function(cmp) {
 						 	return cmp.chain(function(c) {
 								return c.$el ? c.$el().run() : null;
 							});
@@ -82,19 +82,22 @@ define(function() {
 					},
 
 					drag: function() {
-						var drag = sys.run().eff('sys.loader.component').run('components/drag-and-drop/drag-and-drop').create('drag', sys.get('components.home'));
-						drag.run(function(drag) {
-							var home = drag.mixin({ opts: { draggable: '.draggable tr' } }).run(sys.get('components.home'));
+						return sys.eff('sys.loader.component').run('components/drag-and-drop/drag-and-drop').bind(function(x) {
+
+							return x.create({ name: 'drag', parent: sys.get('components.app') }).pure();
+
+						}).bind(function(drag) {
+							var home = drag.mixin({ opts: { draggable: '.draggable tr' } }).run(sys.get('components.app'));
 							var enbl = home.enable('.accordion', '.panel.panel-default');
 							enbl.run();
+							return drag;
 						});
-						return drag;
 					},
 
 					modal: function(name) {
-						var modal = sys.run().eff('sys.loader.component').run('components/modal/modal').bind(function(x) {
+						var modal = sys.eff('sys.loader.component').run('components/modal/modal').bind(function(x) {
 
-							return x.create({ name: name || 'test-modal', parent: sys.get('components.home') }).pure();
+							return x.create({ name: name || 'test-modal' }).pure();
 
 						}).bind(function(mdl) {
 
@@ -119,7 +122,7 @@ define(function() {
 					},
 
 					slideshow: function() {
-						var show = sys.run().eff('sys.loader.component').run('components/slide-show/slide-show').bind(function(x) {
+						var show = sys.eff('sys.loader.component').run('components/slide-show/slide-show').bind(function(x) {
 
 							return x.create({ name: 'slideshow', parent: sys.get('components.home') }).pure();
 

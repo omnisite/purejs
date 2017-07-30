@@ -7,7 +7,7 @@ define(function() {
 
 			core: [ 'pure' ],
 
-			system: [ 'test.$dom', 'test.$types' ]
+			system: [ 'test.$dom', 'test.$types', 'test.$inst' ]
 
 		}
 

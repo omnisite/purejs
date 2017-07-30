@@ -6,7 +6,7 @@
 
         return [].slice.call(arguments);
     })(
-        (function $$DISPATCHER($clean, $schedule, $main, $info, $run, $proc, $shift, $enqueue, $next) {
+        (function $$DISPATCHER($wrap, $clean, $schedule, $main, $info, $run, $proc, $shift, $enqueue, $next) {
 
             var root = this.store();
             var sys  = root.get('sys');
@@ -22,7 +22,8 @@
             var tick   = proc.set('nextTick', $clean('nxt', shared));
 
             tick.raf   = !sys.isWorker;
-            tick.run   = $run(tick, $proc);
+            tick.fn    = $proc;
+            tick.run   = $run(tick, $wrap);
 
             if (sys.isWorker) {
                 tick.schedule = $schedule(proc.get('native.nxt'), Function.prototype.bind.call($main, tick));
@@ -30,7 +31,8 @@
                 tick.schedule = shared.nextTick = proc.get('native.nxt')(Function.prototype.bind.call($main, tick));
 
                 var raf    = proc.set('animFrame', $clean('raf', shared));
-                raf.run    = $run(raf,  $shift);
+                raf.fn     = $shift;
+                raf.run    = $run(raf, $wrap);
                 raf.schedule  = $schedule(proc.get('native.raf'), Function.prototype.bind.call($main, raf));
                 raf.enqueue   = $enqueue(raf.store,  raf.schedule);
             }
@@ -38,6 +40,19 @@
             tick.next = $next(tick.enqueue);
             sys.klass('Cont').prop('next', tick.next);
             return proc;
+        }),
+
+        // wrapper //
+        (function() {
+            try {
+                return this.fn();
+            }catch(e) {
+                console.log(e);
+                this.store.splice(this.index, 1);
+                this.index = 0;
+                if (this.store.length) this.schedule();
+                return true;
+            }
         }),
 
         // getCleanInfo //
@@ -59,25 +74,24 @@
 
         // createMain //
         (function() {
-            var info = this;
-            info.currts = self.now();
-            info.prevts = info.length ? info.lastts : info.currts;
-            if (info.isRaf) {
-                if (info.store.length && (info.shared.rafNext = (info.currts + 16.667))) {
-                    info.schedule();
-                    info.run();
-                }else info.shared.rafNext = 0;
-                if (info.shared.tick && !(info.shared.tick = 0)) info.shared.nextTick();
-            }else if ((info.limit = info.shared.rafNext > info.currts ? info.shared.rafNext : (info.currts + 8)) >= 8) {
-                if (!info.run()) {
-                    if (!info.raf) info.schedule();
-                    else if (!(info.shared.tick = info.shared.rafNext)
-                        && ((info.shared.rafNext - info.currts) < 8)) info.schedule();
+            this.currts = self.now();
+            this.prevts = this.length ? this.lastts : this.currts;
+            if (this.isRaf) {
+                if (this.store.length && (this.shared.rafNext = (this.currts + 16.667))) {
+                    this.schedule();
+                    this.run();
+                }else this.shared.rafNext = 0;
+                if (this.shared.tick && !(this.shared.tick = 0)) this.shared.nextTick();
+            }else if ((this.limit = this.shared.rafNext > this.currts ? this.shared.rafNext : (this.currts + 8)) >= 8) {
+                if (!this.run()) {
+                    if (!this.raf) this.schedule();
+                    else if (!(this.shared.tick = this.shared.rafNext)
+                        && ((this.shared.rafNext - this.currts) < 8)) this.schedule();
                 }
-            }else if (!info.run()) {
-                info.schedule();
+            }else if (!this.run()) {
+                this.schedule();
             }
-            info.suspend = false;
+            this.suspend = false;
         }),
 
         // createInfo //
@@ -143,42 +157,47 @@
 
         // coreProc //
         (function() {
-            var info = this, store = info.store, item;
-            info.length = store.length;
-            info.size   = info.length;
-            info.frameid++;
+            this.length = this.store.length;
+            this.size   = this.length;
+            this.frameid++;
 
-            while(++info.count && store.length) {
-                if ((item = store[info.index]) && ++item.count && (item.frameid || (item.frameid = info.frameid)) && item.next(info)) {
-                    if (info.index == 0) {
-                        store.shift();
-                    }else if (store.length - info.index == 1) {
-                        store.pop(); info.index = 0;
+            while(++this.count && this.store.length) {
+                if ((this.item = this.store[this.index]) && ++this.item.count && (this.item.frameid || (this.item.frameid = this.frameid)) && this.item.next(this)) {
+                    if (this.index == 0) {
+                        this.store.shift();
+                    }else if (this.store.length - this.index == 1) {
+                        this.store.pop(); this.index = 0;
                     }else {
-                        store.splice(info.index, 1);
+                        this.store.splice(this.index, 1);
                     }
-                    info.index < info.size || (info.index = 0);
-                }else if (item.frameid < info.frameid) {
-                    item.frameid++;
+                    this.index < this.size || (this.index = 0);
+                }else if (++this.item.frameid < this.frameid) {
+                    this.item.frameid;
+                }else if (this.store.length > 1) {
+                    ++this.index < this.store.length || (this.index = 0);
                 }else {
-                    ++info.index < store.length || (info.index = 0);
+                    this.index = 0;
                 }
-                if (info.suspend || (info.limit < (info.lastts = self.now()))) break;
+                if (this.suspend || (this.limit < (this.lastts = self.now()))) break;
             };
-            return (!(info.length = store.length));
+            return (!(this.length = this.store.length));
         }),
 
         // coreShift //
         (function() {
-            var info = this, store = this.store, idx = 0;
-            info.length = store.length;
-            info.size   = info.length;
-            info.frameid++;
-            while(info.length && info.length-- && ++info.count && store.length) {
-                if (store[idx].next(info)) store.splice(idx, 1);
-                else idx++;
+            this.index  = 0;
+            this.length = this.store.length;
+            this.size   = this.length;
+            this.frameid++;
+            while(!this.suspend && ++this.count && this.store.length) {
+                if (this.store[this.index].next(this)) {
+                    this.store.splice(this.index, 1);
+                    this.index < this.store.length || (this.index = 0);
+                }else {
+                    ++this.index < this.store.length || (this.index = 0);
+                }
             };
-            return (info.lastts = self.now()) && (!(info.length = store.length));
+            return (this.lastts = self.now()) && (!(this.length = this.store.length));
         }),
 
         // enqueue //
@@ -211,287 +230,6 @@
                 };
             })
         )
-    ),
-
-    (function MakeThreads() {
-
-        return [].slice.call(arguments);
-    })(
-        // === IMPORT / PARSE === //
-            (function $$THREADS() {
-                return this.store('utils.importFuncs')([].slice.call(arguments), this.store().child('threads'));
-            }),
-        // === VALUES === //
-            (function lazyValue(v) { return (function() { return v; }); }),
-            (function lazyFunction(f) { return (function() { return f(); }); }),
-            (function atom(f, t) {
-                return function() {
-                    return f(t);
-                };
-            }),
-            (function atomize(f) {
-                return function() {
-                    var args = arguments;
-                    return atom(function() {
-                        return f.apply(null, args);
-                    });
-                };
-            }),
-            (function bindLazy(v, f) {
-                return function() {
-                    return f(v())();
-                };
-            }),
-            (function $_mapLazy($_atom) {
-                return function mapLazy(f) {
-                    return function(v) {
-                        return $_atom(f, v);
-                    }
-                }
-            }),
-        // === INSTRUCTIONS === //
-            (function pure(value)   { return { pure: true,  value: value }; }),
-            (function roll(functor) { return { pure: false, value: functor }; }),
-            (function $_makeThread($_pure) {
-                return function makeThread(value) {
-                    return function() { return $_pure(value); };
-                };
-            }),
-            (function $_wrap($_roll) {
-                return function wrap(instruction) {
-                    return function() { return $_roll(instruction); };
-                }
-            }),
-            (function makeInstruction() {
-                var modeConfig = {
-                  yield:  { ps9:  true  },
-                  cont:   { cont: true  },
-                  suspend:{ susp: true, ps9: true },
-                  done:   { done: true  },
-                  fork:   { us0:  true, ps1: true },
-                  branch: { us9:  true  }
-                };
-                return function makeInstruction(mode, next) {
-                  return { mode: mode, next: next, cf: modeConfig[mode] };
-                };
-            })(),
-            (function $_instructionMap($_makeInstruction) {
-                return function instructionMap(instruction, f) {
-                    return $_makeInstruction(instruction.mode, instruction.next.map(f));
-                }
-            }),
-        // === BIND AND LIFT === //
-            (function $_bindThread($_bindLazy, $_instructionMap, $_wrap, $_roll, $_lazyValue) {
-                return function bindThread(lazyValue, f) {
-                    return $_bindLazy(lazyValue, function(free) {
-                        return free.cont ? (free.kont || (free.kont = $_lazyValue(free)))
-                        : (free.pure || !free.value
-                            ? f(free.value || free)
-                            : (free.kont || (free.kont = $_lazyValue($_roll($_instructionMap(free.value, function(v) {
-                                return bindThread(v, f);
-                            }))))));
-                    });
-                }
-            }),
-            (function $_lift($_bindLazy, $_makeThread) {
-                return function lift(lazyValue) {
-                    return $_bindLazy(lazyValue, $_makeThread);
-                }
-            }),
-            (function $_liftFn($_makeThread) {
-                return function liftFn(fn) {
-                    return function(value, free, inst) {
-                        return makeThread(fn(value, free, inst));
-                    }
-                }
-            }),
-            (function $_liftF($_instructionMap, $_makeThread, $_wrap) {
-                return function(instruction) {
-                    return $_wrap($_instructionMap(instruction, $_makeThread));
-                }
-            }),
-            (function $_mapThread($_bindThread, $_makeThread) {
-                return function mapThread(lazyValue, f) {
-                    return $_bindThread(lazyValue, function(v) {
-                        return $_makeThread(f(v));
-                    });
-                }
-            }),
-
-        // === RUN, YIELD, DONE
-            (function $_yyield($liftF, $_makeInstruction) {
-                return function yyield() {
-                  return $_liftF($_makeInstruction('yield', [null]));
-                }
-            }),
-            (function runThreads(threads, status) {
-                var free, inst, next, count = 0, index = 0;
-                return function(info) {
-                    if (++status.count && (status.length = threads.length) > 0) {
-                        free = threads[0](info);
-                        if (free && free.pure === false) {
-                            if (!free.cont) {
-                                threads.shift();
-                                inst = free.value;
-                                next = inst.next;
-                                if (inst.cf.ps9) {
-                                    threads.push.apply(threads, next);
-                                }else if (inst.cf.us0) {
-                                    threads.unshift(next[0]);
-                                    threads.push.apply(threads, next.slice(1));
-                                }
-                            }
-                            count++;
-                        }else {
-                            threads.shift();
-                        }
-                        if (inst.cf.susp && count == threads.length && (info.suspend = true))
-                            count = 0;
-
-                        if (threads.length > status.maxlen) status.maxlen = threads.length;
-                    }
-                    return !(status.length = threads.length);
-                }
-            }),
-            (function addThreads(make, wrap) {
-                return function $_addThreads($_runThreads, $_lazyValue) {
-                    return function addThreads(threads, enqueue, name) {
-                        return make(wrap, $_lazyValue, $_runThreads, threads, enqueue, {
-                            name: name, count: 0, maxlen: 0
-                        });
-                    }
-                };
-            })(
-                (function(wrap, lazy, make, threads, enqueue, status) {
-                    return {
-                        enqueue: wrap(make(threads, status), threads, enqueue),
-                        status: lazy(status)
-                    };
-                }),
-                (function(run, threads, enqueue) {
-                    return function() {
-                        if (!(threads.length * threads.push.apply(threads, arguments))) {
-                            enqueue(run);
-                        }
-                    }
-                })
-            ),
-
-            (function makeBind() {
-                return [].slice.call(arguments).apply();
-            })(
-                (function(bind, make, wrap, suspend) {
-                    return function $_makeBind($_roll, $_makeInstruction, $_bindLazy, $_lazyValue, $_pure, $_mapLazy, $_runThreads) {
-                        return bind(make, wrap, {
-                            roll: $_roll, makeInstruction: $_makeInstruction, suspend: suspend,
-                            bindLazy: $_bindLazy, lazyValue: $_lazyValue, pure: $_pure, mapLazy: $_mapLazy
-                        });
-                    }
-                }),
-                (function bind(make, wrap, func) {
-                    return function makeBind(f, x, t) {
-                        return wrap.call(func, make(func), f, x || {}, t);
-                    }
-                }),
-                (function make(x) {
-                    return {
-                        next: function(v) {
-                            return x.roll(x.makeInstruction('yield', [ this.run(v) ]));
-                        },
-                        bind: function(v, f) {
-                            return x.roll(x.makeInstruction('yield', [ x.bindLazy(x.lazyValue(v), f) ]));
-                        },
-                        then: function(v) {
-                            return this.run(v);
-                        },
-                        done: function(v) {
-                            return x.pure(v);
-                        }
-                    };
-                }),
-                (function wrap(b, f, x, t) {
-                    b.data = this.lazyValue(x);
-                    b.run  = this.mapLazy(f.bind(b));
-                    if (t) b.susp = this.suspend(t);
-                    return b.run;
-                }),
-                (function suspend(t) {
-                    return function(v) {
-                        return this.done(t.of(this.run(v)));
-                    }
-                })
-            ),
-        // === ARR THREAD
-            (function makeArr(x, f, k) {
-                return function() {
-                    if (x.i < x.arr.length) {
-                        x.res[x.i] = f(x.arr[x.i], x.i++, x.arr);
-                        if (k && x.i == x.arr.length) {
-                            x.res = k(x.res);
-                        }
-                    }
-                    return x.i < x.arr.length ? x.next : x.pure;
-                }
-            }),
-            (function $_arrThread($_makeArr, $_makeInstruction, $_lazyValue) {
-                return function arrThread(f, k, m) {
-                    return function(arr) {
-                        var x  = { arr: arr, i: 0, res: arr.map($_lazyValue()) };
-                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeArr(x, f, k) ]) };
-                        x.pure = { pure: true,  value: x.res };
-                        return $_lazyValue(x.next);
-                    }
-                }
-            }),
-
-        // === QUEUE THREAD
-            (function makeQueue(x, f, k) {
-                return function() {
-                    if (x.arr.length) {
-                        if (f(x.arr[(x.i<x.arr.length?x.i:(x.i=0))], x.item++, x.run++) && !(x.item = 0))
-                            if (x.i) x.arr.splice(x.i, 1);
-                            else x.arr.shift();
-                        else
-                            x.i++;
-                        if (k && !x.arr.length) k(x);
-                    }
-                    return x.arr.length ? x.cont : x.pure;
-                }
-            }),
-            (function $_queueThread($_makeQueue, $_makeInstruction, $_lazyValue) {
-                return function queueThread(f, k, m) {
-                    return function(arr) {
-                        var x  = { arr: arr, i: 0, item: 0, run: 0 };
-                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeQueue(x, f, k) ]) };
-                        x.cont = { pure: false, cont: true };
-                        x.pure = { pure: true,  value: x };
-                        return $_lazyValue(x.next);
-                    }
-                }
-            }),
-
-        // === LIST THREAD
-            (function makeList(x, f, k) {
-                return function() {
-                    if (x.arr.length) {
-                        if ((x.arr = x.arr.filter(function(v, i) {
-                            return !f(v);
-                        })) && k && !x.arr.length) k(x);
-                    }
-                    return x.arr.length ? x.cont : x.pure;
-                }
-            }),
-            (function $_listThread($_makeList, $_makeInstruction, $_lazyValue) {
-                return function listThread(f, k, m) {
-                    return function(arr) {
-                        var x  = { arr: arr.splice(0), i: 0, item: 0, run: 0 };
-                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeList(x, f, k) ]) };
-                        x.cont = { pure: false, cont: true };
-                        x.pure = { pure: true,  value: x.arr.slice(0) };
-                        return $_lazyValue(x.next);
-                    }
-                }
-            })
     ),
 
     (function MakeAsync() {
@@ -670,6 +408,9 @@
                         (function chain() {
                             return this.unsafePerformIO.apply(this, arguments);
                         }),
+                        (function raf() {
+                            return this.$fn.raf(Function.prototype.apply.bind(this.unsafePerformIO, this, [].slice.call(arguments)));
+                        }),
                         (function runIO() {
                             var args = [].slice.call(arguments);
                             if (args.length && args[0] instanceof this.constructor) {
@@ -717,8 +458,19 @@
                     findType: function(type, name) {
                         return type.find(name);
                     },
+                    wrapIO: function(io) {
+                        return function() {
+                            return io.run.apply(io, [].slice.call(arguments));
+                        }
+                    },
                     init: function(type, klass, sys) {
                         this.root().prop('$find', klass.pure(this.root).lift(type.findType));
+                        klass.prop('wrapIO', sys.get('utils.call')(type.wrapIO));
+                        klass.prop('$fn', {
+                            compose: klass.find('Compose').prop('$fn'),
+                            enqueue: sys.get('process.nextTick.enqueue'),
+                            raf: sys.get('process.animFrame.enqueue')
+                        });
                     }
                 };
             }),
@@ -726,17 +478,21 @@
             (function() {
                 return {
                     klass: function Obj(x, r, p) {
-                        if (!(this instanceof Obj)) return new Obj(x, r);
-                        this._root   = this.konst(r || this);
-                        this._parent = p ? this.konst(p) : this._root;
+                        if (!(this instanceof Obj)) return new Obj(x, r, p);
+                        this._root   = r && r.name == '$_const' ? r : this.konst(r || this);
+                        this._parent = p || this._root;
                         Object.assign(this, this.reduce(unit, x));
                     },
                     ext: [
-                        (function of(v) {
-                            return new this.constructor(v, this.root(), this);
+                        (function of(x, r) {
+                            if (r) {
+                                return new this.constructor(x, r === true ? null : r);
+                            }else {
+                                return new this.constructor(x, this._root, this.konst(this));
+                            }
                         }),
                         (function konst(v) {
-                            return function() {
+                            return function $_const() {
                                 return v;
                             }
                         }),
@@ -877,7 +633,136 @@
                     ],
                     init: function(type, klass, sys) {
                         klass.prop('path', sys.root.get('utils.path'));
-
+                        Object.prototype.keys  = sys.get('utils.call')(Object.keys);
+                        Object.prototype.clone = sys.get('utils.update');
+                    }
+                };
+            }),
+        // === Maybe === //
+            (function Maybe() {
+                return {
+                    parent: 'Functor',
+                    klass: function Maybe(x) {
+                        this.id = this.id();
+                        if (x || typeof x != 'undefined') this._x = x;
+                    },
+                    ext: [
+                        (function prop() {
+                            var args = Array.prototype.slice.call(arguments);
+                            return this.map(this.property(args.shift()).apply(undefined, args));
+                        }),
+                        (function get(key) {
+                            return this.map(this.pget(key));
+                        }),
+                        (function values(recur) {
+                            return this.map(this.pval(recur));
+                        }),
+                        (function $isNothing(v) {
+                            return v === null || v === undefined || v === false;
+                        }),
+                        (function isNothing() {
+                            return this._x === null || this._x === undefined || this._x === false;
+                        }),
+                        (function isSome() {
+                            return !this.isNothing();
+                        }),
+                        (function ifSome(mf) {
+                            return this.isNothing() || !mf || !(mf instanceof Function) ? null : mf.call(this, this._x);
+                        }),
+                        (function filter(f) {
+                            return this.map(function(v) {
+                                if (f(v)) return v;
+                            });
+                        }),
+                        (function chain(f) {
+                            if (f instanceof Function) {
+                                return this.ifSome(f || unit);
+                            }else if (this._x instanceof Function) {
+                                return this.ifSome(this.fn.pure(f));
+                            }else {
+                                return this.ifSome(f);
+                            }
+                        }),
+                        (function orElse(mv) {
+                            return this.isNothing() ? new this.constructor(mv instanceof Function ? mv() : mv) : this;
+                        }),
+                        (function map(mf) {
+                            return this.ctor.of(this.chain(mf));
+                        }),
+                        (function run(f) {
+                            return this.chain(f || unit);
+                        }),
+                        (function ap(other) {
+                            return this.is(other) ? this.map(function(x) {
+                                return x instanceof Function ? (this.test(other) ? other.chain(x) : other.map(x)) : (x.ap ? x.ap(other) : other.ap(x));
+                            }) : (other instanceof Function ? this.of(other).ap(this._x) : this.of(other).map(this._x));
+                        }),
+                        (function apply(other) {
+                            return other.ap(this);
+                        }),
+                        (function unit() {
+                            return this._x;
+                        }),
+                        (function join() {
+                            return this._x;
+                        })
+                    ],
+                    attrs: [
+                        (function of(x) {
+                            return x && x instanceof this ? x : new this(x);
+                        }),
+                        (function list(x) {
+                            return this.of(x.map(this.ctor.of).filter(function(x) {
+                                return x.isSome();
+                            })).filter(function(x) {
+                                return x.length;
+                            });
+                        }),
+                        (function pure(x) {
+                            return new this(x);
+                        })
+                    ],
+                    toIO: function($iopure) {
+                        return function() {
+                            return this.chain($iopure);
+                        }
+                    },
+                    toMaybeIO: function($iof) {
+                        return function() {
+                            return $iof(this).lift(function(mbfn, value) {
+                                return mbfn.chain(function(fn) {
+                                    return this.of(value).chain(fn);
+                                });
+                            });
+                        }
+                    },
+                    toMaybe: function($maybe) {
+                        return function() {
+                            return this.map($maybe.of);
+                        }
+                    },
+                    runMaybe: function($maybe) {
+                        return function(v) {
+                            return $maybe.of(this.run(v));
+                        }
+                    },
+                    maybe: function($maybe) {
+                        return function() {
+                            return (this._maybe || (this._maybe = $maybe.of(this)));
+                        }
+                    },
+                    init: function(type, klass, sys) {
+                        var root = this.$store.root, utils = root.get('utils');
+                        var property = klass.prop('property', utils.get('property'));
+                        klass.prop('pget', property('get'));
+                        klass.prop('pval', property('values'));
+                        klass.prop('curry', utils.get('curry'));
+                        var IO = this.find('IO');
+                        klass.prop('toIO',  type.toIO(IO.pure));
+                        klass.prop('toMaybeIO', type.toMaybeIO(IO.of));
+                        IO.prop('toMaybe',  type.toMaybe(klass));
+                        IO.prop('runMaybe', type.runMaybe(klass));
+                        this.root().base.prototype.maybe = type.maybe(klass);
                     }
                 };
             }),
@@ -1290,8 +1175,11 @@
                                 scheduler: sys.get('process'),
                                 enqueue: sys.get('process.nextTick.enqueue'),
                                 Cont: klass.find('Cont').of,
+                                functor: klass.find('Functor'),
+                                maybe: klass.find('Maybe'),
                                 aid: this.makeID('arr'),
-                                utils: sys.get('utils').select('call', 'call1', 'call2', 'andThen', 'pass', 'target', 'extend'),
+                                log: sys.log,
+                                utils: sys.get('utils').select('atom', 'call', 'call1', 'call2', 'andThen', 'pass', 'target', 'extend'),
                                 async: sys.get('async').select('pure', 'cast', 'make', 'select', 'get', 'next', 'combine', 'flatmap', 'fmap', 'wrap', 'then', 'lazy')
                             }))))));
                         };
@@ -1302,10 +1190,13 @@
                         }),
                         (function(ext) {
                             var set = ext.klass.prop('collect')(ext.scheduler, ext.async);
+                            Array.prototype.__      = ext.functor.$ctor;
+                            Array.prototype.maybe   = ext.utils.call(ext.maybe.fromConstructor('list'));
                             Array.prototype.collect = ext.utils.call2(set.collect);
                             Array.prototype.wrap    = ext.utils.pass(set.wrap);
                             Array.prototype.make    = ext.utils.call2(set.make);
                             Array.prototype.arrid   = ext.aid;
+                            Array.prototype.info    = ext.utils.call(sys.get('utils.point.map')(ext.log));
                             return ext;
                         }),
                         (function() {
@@ -1318,8 +1209,13 @@
                             Array.prototype.combine = this.utils.call2(this.async.combine);
                             Array.prototype.target  = this.utils.target;
                             Array.prototype.select  = this.async.select;
-                            Array.prototype.call    = function(key) {
-                                return this.bind(this.target(key));
+                            Array.prototype.dequeue = this.utils.atom(function(f) {
+                                return f ? f() : null;
+                            }, function(x) {
+                                return x.shift();
+                            });
+                            Array.prototype.call    = function() {
+                                return this.length ? f(this.shift()) : null;
                             };
                             Array.prototype.ap = function() {
                                 var args = [].slice.call(arguments);
@@ -1329,8 +1225,8 @@
                                     }, args);
                                 }else {
                                     return [ function(a, x) {
-                                        return a.bind(function(b) {
-                                            return x.run(b);
+                                        return a.bind(function(v, i) {
+                                            return x.run(v, i);
                                         });
                                     }, this, args.shift() ].apply();
                                 }
@@ -1417,17 +1313,52 @@
                             return this;
                         }),
                         (function make(path, type, items) {
-                            var root  = sys.get();
+                            var root  = this.initial();
                             var parts = path.split('.');
                             var name  = parts.pop();
-                            var store = parts.length ? (root.get(parts) || root.ensure(parts)).store() : root.child(name).store();
+                            var store = parts.length ? (root.get(parts) || root.ensure(parts)).store() : root.node(name).store();
                             if (items) store.parse(items);
                             return store.link(type);
+                        }),
+                        (function coyo() {
+                            var args = [].slice.call(arguments);
+                            var node = this.initial(args.pop());
+                            node.parse(this.klass('Obj').of({
+                                base: {
+                                    run: function(r, k) {
+                                        var v = this.root(k);
+                                        if (v instanceof Function) {
+                                            r = v(r);                             
+                                        }else if (typeof v == 'object') {
+                                            if (v.$$map && v.$$run) {
+                                                r = v.$$run(r);
+                                            }else if (v.$$map) {
+                                                r = v.$$map(r);
+                                            }else if (r.$$map) {
+                                                r = r.$$map(r);
+                                            }else if (v.base) {
+                                                r = v.base(r);
+                                            }
+                                        }
+                                        return r;
+                                    }
+                                },
+                                node: this.konst(node.get('node') || node),
+                                $$link: this.konst(this),
+                                $$run: function(evt) {
+                                    return (this[this.$$map(evt)] || unit).call(this, evt);
+                                }
+                            }).extend(args.shift()));
+                            return this.klass('Coyoneda').of(function(base) {
+                                return function(evt) {
+                                    return base.run(evt);
+                                }
+                            }, this.add(node.cid(), args.shift() || {}, 'base', node.cid()).resolve(node.cid(), 'base'));
                         }),
                         (function run() {
                             var args = [].slice.call(arguments), rec, path, link;
                             if (typeof args[0] == 'string') {
-                                if (args[0].indexOf('.') > 0) {
+                                if (args.length > 1 && args[0].indexOf('.') > 0) {
                                     path = args.shift().split('.');
                                     link = this.idx.get(path.slice(0, -1).join('.'));
                                     return link.run.apply(link, args.prepend(path.last()));
@@ -1441,9 +1372,30 @@
                             return this.ops.get(this.cid()).apply(this.current(), args);
                         })
                     ],
-                    link: function(mode) {
-                        var link = this._link || (this._link = this.$link(this, mode));
+                    link: function() {
+                        var args = [].slice.call(arguments);
+                        var mode = args.shift(), path, node, link, name;
+                        if (args.length) {
+                            path = args.shift();
+                            name = path.split('.').first();
+                            node = (this.get(path) && this.get(name)) || (this.ref().ensure(path).set('node', this.ref()).get(name).store());
+                            if (args.length) node.parse(args.shift());
+                        }else {
+                            node = this;
+                        }
+                        link = node._link || (node._link = node.$link(node, mode));
                         return mode ? link.mode(mode) : link;
+                    },
+                    vmap: function(/* path, objs */) {
+                        var args = [].slice.call(arguments);
+                        var path = args.shift();
+                        var coyo = this.get(path.concat('.coyo'));
+                        if (coyo) return coyo;
+
+                        var link = this.link('valueMap', path);
+                        var name = path.split('.').last();
+                        var coyo = link.coyo(args.shift() || {}, name);
+                        return this.get(path).set('coyo', coyo);
                     },
                     haslink: function() {
                         return this._link;
@@ -1534,6 +1486,7 @@
                         var $store = klass.$store.ctor;
                         $store.prop('$link', klass.of);
                         $store.prop('link', type.link);
+                        $store.prop('vmap', type.vmap);
                         $store.prop('haslink', type.haslink);
                         var link = klass.prop('root').child('link', klass.$ctor).store();
                         klass.prop('data', type.data.call(link.child('data')));
@@ -1548,61 +1501,69 @@
                     }
                 };
             }),
-        // === Coyoneda === //
-            (function Coyoneda() {
+        // === Schema === //
+            (function() {
                 return {
-                    parent: 'Functor',
-                    extend: 'Compose',
-                    klass: function Coyoneda(f, x) {
-                        this.$super.call(this, f, x);
+                    parent: 'Node',
+                    klass: function Schema(opts) {
+                        this.$super(opts);
+                        this.node('fields');
+                        this.node('funcs');
+                        this.configure(opts);
                     },
                     ext: [
-                        (function $$init(f, x) {
-                            if (f) this.mf = f;
-                            else if (!this.mf) this.mf = unit;
-                            if (x) this.mv = x;
-                        }),
-                        (function map(f) {
-                            return new this.constructor(this.$fn(this.mf)(f), this.mv);
-                        }),
-                        (function bind(x, f) {
-                            return this.$fn(this.mf)(unit)(this.mv)(x);
-                        }),
-                        (function chain(f) {
-                            return this.$fn(this.mf)(f || unit)(this.mv);
-                        }),
-                        (function lift(f) {
-                            return new this.constructor(this.mf, this.mv);
-                        }),
-                        (function run(t, x) {
-                            return this.$fn(this.mf)(unit)(x || this.mv)(t);
-                        })
                     ],
-                    attrs: [
-                        (function of(f, x) {
-                            if (!(f instanceof Function)) return this.lift(f, x);
-                            return new this(f || unit, x);
-                        }),
-                        (function lift(x, f) {
-                            return new this(f || unit, x);
-                        }),
-                        (function $of() {
-                            var ctor = this;
-                            return function() {
-                                return ctor.of.apply(ctor, arguments);
+                    conf: {
+                        control: {
+                            main: {
+                                add: function(values) {
+                                    var root = this.root();
+                                    var vals = values || {};
+                                    var node = root.get('fields').reduce(function(r, v, k, n) {
+                                        r[k] = vals[k] || (k == 'cid' ? root.id() : (v.get('defv') || ''));
+                                        return r;
+                                    }, {});
+                                    return node;
+                                }
                             }
-                        })
-                    ],
-                    atom: function(atom) {
-                        return function(f, x) {
-                            return atom(this.$fn(this.mf)(f || unit), (x || this.mv));
                         }
                     },
+                    type: [
+                        { name: 'string',  type: String   },
+                        { name: 'number',  type: Number   },
+                        { name: 'array',   type: Array    },
+                        { name: 'object',  type: Object   },
+                        { name: 'data',    type: '$data'  },
+                        { name: 'store',   type: '$store' },
+                        { name: 'node',    type: '$node'  },
+                        { name: 'klass',   type: '$ctor'  }
+                    ],
+                    field: [
+                        { name: 'type',    type: 'type'   },
+                        { name: 'data',    type: 'type'   },
+                        { name: 'options', type: Array    },
+                        { name: 'default', type: 'type'   },
+                        { name: 'nodes',   type: 'node'   }
+                    ],
+                    node: [
+                        { name: 'klass',   type: 'klass' },
+                        { name: 'fields',  type: 'field' }
+                    ],
+                    attrs: [
+                        (function of(ref, name) {
+                            return new this(ref, name);
+                        })
+                    ],
                     init: function(type, klass, sys) {
-                        klass.prop('atom', type.atom(sys.get('threads.atom')));
+                        var $store = klass.$store.ctor;
+                        var schema = sys.root.child('schema', klass.$ctor);
+                        klass.prop('$type', schema.node('$type').parse(type.type));
+                        klass.prop('$field', schema.node('$field').parse(type.field));
+                        klass.prop('$node', schema.node('$node').parse(type.node));
+                        klass.prop('conf', sys.get('utils.extend')(klass.prop('conf').clone(), type.conf));
                     }
                 };
-            }),        
+            }),
         // === Value === //
             (function() {
                 return {
@@ -1645,10 +1606,14 @@
                         (function resolve(f) {
                             return this.mv && !this.isLocked(this.mv) ? this.unlock().resolve(f) : this.of(this.mv.resolve(f), false);
                         }),
-                        (function create(opts) {
+                        (function pure() {
+                           return this.mv && !this.isLocked(this.mv) ? this.unlock().pure() : this.mv.pure(); 
+                        }),
+                        (function create() {
+                            var args = [].slice.call(arguments);
                             return this.mv.bind(function(v) {
                                 return function $_pure(k) {
-                                    v.create(opts).run(k);
+                                    v.create.apply(v, args).run(k);
                                 }
                             });
                         }),
@@ -1693,141 +1658,456 @@
                         this.find('Cont').prop('$value', type.value(klass));
                     }
                 };
+            })
+    ),
+
+    (function MakeThreads() {
+
+        return [].slice.call(arguments);
+    })(
+        // === IMPORT / PARSE === //
+            (function $$THREADS() {
+                return this.store('utils.importFuncs')([].slice.call(arguments), this.store().child('threads'));
             }),
-        // === Maybe === //
-            (function Maybe() {
+        // === VALUES === //
+            (function lazyValue(v) { return (function() { return v; }); }),
+            (function lazyFunction(f) { return (function() { return f(); }); }),
+            (function atom(f, t) {
+                return function() {
+                    return f(t);
+                };
+            }),
+            (function ftor(f) {
+                return function(x) {
+                    return f.run(x);
+                };
+            }),
+            (function atomize(f) {
+                return function() {
+                    var args = arguments;
+                    return atom(function() {
+                        return f.apply(null, args);
+                    });
+                };
+            }),
+            (function bindLazy(v, f) {
+                return function() {
+                    return f(v())();
+                };
+            }),
+            (function $_atomLazy($_bindLazy) {
+                return function atomLazy(f) {
+                    return function(v) {
+                        return $_bindLazy(v, f);
+                    };
+                };
+            }),
+            (function $_mapLazy($_atom) {
+                return function mapLazy(f) {
+                    return function(v) {
+                        return $_atom(f, v);
+                    }
+                }
+            }),
+        // === INSTRUCTIONS === //
+            (function pure(value)   { return { pure: true,  value: value }; }),
+            (function roll(functor) { return { pure: false, value: functor }; }),
+            (function $_makeThread($_pure) {
+                return function makeThread(value) {
+                    return function() { return $_pure(value); };
+                };
+            }),
+            (function $_wrap($_roll) {
+                return function wrap(instruction) {
+                    return function() { return $_roll(instruction); };
+                }
+            }),
+            (function makeInstruction() {
+                var modeConfig = {
+                  yield:  { ps9:  true  },
+                  cont:   { cont: true  },
+                  suspend:{ susp: true, ps9: true },
+                  done:   { done: true  },
+                  fork:   { us0:  true, ps1: true },
+                  branch: { us9:  true  }
+                };
+                return function makeInstruction(mode, next) {
+                  return { mode: mode, next: next, cf: modeConfig[mode] };
+                };
+            })(),
+            (function $_instructionMap($_makeInstruction) {
+                return function instructionMap(instruction, f) {
+                    return $_makeInstruction(instruction.mode, instruction.next.map(f));
+                }
+            }),
+        // === BIND AND LIFT === //
+            (function $_bindThread($_bindLazy, $_instructionMap, $_wrap, $_roll, $_lazyValue) {
+                return function bindThread(lazyValue, f) {
+                    return $_bindLazy(lazyValue, function(free) {
+                        return free.cont ? (free.kont || (free.kont = $_lazyValue(free)))
+                        : (free.pure || !free.value
+                            ? f(free.value || free)
+                            : (free.kont || (free.kont = $_lazyValue($_roll($_instructionMap(free.value, function(v) {
+                                return bindThread(v, f);
+                            }))))));
+                    });
+                }
+            }),
+            (function $_lift($_bindLazy, $_makeThread) {
+                return function lift(lazyValue) {
+                    return $_bindLazy(lazyValue, $_makeThread);
+                }
+            }),
+            (function $_atomThread($_bindThread) {
+                return function atomThread(f) {
+                    return function(v) {
+                        return $_bindThread(v, f);
+                    };
+                };
+            }),
+            (function $_liftFn($_makeThread) {
+                return function liftFn(fn) {
+                    return function(value, free, inst) {
+                        return makeThread(fn(value, free, inst));
+                    }
+                }
+            }),
+            (function $_liftF($_instructionMap, $_makeThread, $_wrap) {
+                return function(instruction) {
+                    return $_wrap($_instructionMap(instruction, $_makeThread));
+                }
+            }),
+            (function $_mapThread($_bindThread, $_makeThread) {
+                return function mapThread(lazyValue, f) {
+                    return $_bindThread(lazyValue, function(v) {
+                        return $_makeThread(f(v));
+                    });
+                }
+            }),
+
+        // === RUN, YIELD, DONE
+            (function $_yyield($liftF, $_makeInstruction) {
+                return function yyield() {
+                  return $_liftF($_makeInstruction('yield', [null]));
+                }
+            }),
+            (function runThreads(threads, status) {
+                var free, inst, next, count = 0, index = 0;
+                return function(info) {
+                    if (++status.count && (status.length = threads.length) > 0) {
+                        free = threads[0](info);
+                        if (free && free.pure === false) {
+                            if (!free.cont) {
+                                threads.shift();
+                                inst = free.value;
+                                next = inst.next;
+                                if (inst.cf.ps9) {
+                                    threads.push.apply(threads, next);
+                                }else if (inst.cf.us0) {
+                                    threads.unshift(next[0]);
+                                    threads.push.apply(threads, next.slice(1));
+                                }
+                            }
+                            count++;
+                        }else {
+                            threads.shift();
+                        }
+                        if (inst && inst.cf.susp && count == threads.length && (info.suspend = true))
+                            count = 0;
+
+                        if (threads.length > status.maxlen) status.maxlen = threads.length;
+                    }
+                    return !(status.length = threads.length);
+                }
+            }),
+            (function addThreads(make, wrap) {
+                return function $_addThreads($_runThreads, $_lazyValue) {
+                    return function addThreads(threads, enqueue, name) {
+                        return make(wrap, $_lazyValue, $_runThreads, threads, enqueue, {
+                            name: name, count: 0, maxlen: 0
+                        });
+                    }
+                };
+            })(
+                (function(wrap, lazy, make, threads, enqueue, status) {
+                    return {
+                        enqueue: wrap(make(threads, status), threads, enqueue),
+                        status: lazy(status)
+                    };
+                }),
+                (function(run, threads, enqueue) {
+                    return function() {
+                        if (!(threads.length * threads.push.apply(threads, arguments))) {
+                            enqueue(run);
+                        }
+                    }
+                })
+            ),
+
+            (function makeBind() {
+                return [].slice.call(arguments).apply();
+            })(
+                (function(make, bind, create, cache, wrap, suspend) {
+                    return function $_makeBind($_wrap, $_roll, $_atom, $_ftor, $_makeInstruction, $_bindLazy, $_lazyValue, $_pure, $_mapLazy, $_runThreads) {
+                        return make(bind, create, cache, wrap, {
+                            wrap: $_wrap, roll: $_roll, atom: $_atom, ftor: $_ftor,
+                            makeInstruction: $_makeInstruction, suspend: suspend,
+                            bindLazy: $_bindLazy, lazyValue: $_lazyValue, pure: $_pure, mapLazy: $_mapLazy
+                        });
+                    }
+                }),
+                (function make(bind, create, cache, wrap, func) {
+                    return bind(cache(create(func)), wrap, func);
+                }),
+                (function bind(bound, wrap, func) {
+                    return function makeBind(f, x, t) {
+                        return wrap.call(func, bound.call(func, f), x || {}, t);
+                    }
+                }),
+                (function ftor(ctor, ext) {
+                    return function(x) {
+                        return ext.call(ctor, x);
+                    }
+                })(
+                    (function $ftor(ftor) {
+                        this.ftor = ftor.of(ftor.run().bind(this));
+                    }),
+                    (function(x) {
+                        this.prototype = {
+                            constructor: this,
+                            cache: function(key, value) {
+                                return (this[key] = x.lazyValue(value))();
+                            },
+                            cont: function() {
+                                return this.cache('cont', { pure: false, cont: true });
+                            },
+                            next: function(v) {
+                                return x.roll(x.makeInstruction('yield', [ this.run(v) ]));
+                            },
+                            susp: function(v) {
+                                return this.cache('susp', x.roll(x.makeInstruction('suspend', [ this.run(v) ])));
+                            },
+                            bind: function(v, f) {
+                                return this.cache('bind', x.roll(x.makeInstruction('yield', [ x.atom(f, v) ])));
+                            },
+                            lift: function(v) {
+                                return new this.constructor(this.ftor.lift(v));
+                            },
+                            then: function(v) {
+                                return this.run(v);
+                            },
+                            done: function(v) {
+                                return x.pure(v);
+                            },
+                            run: function() {
+                                return (this.run = x.mapLazy(x.ftor(this.ftor)));
+                            }
+                        };
+                        return this;
+                    })
+                ),
+                (function cache(b) {
+                    return function(ftor) {
+                        var x = new b(ftor);
+                        x.run();
+                        return x;
+                    }
+                }),
+                (function wrap(b, x, t) {
+                    if (t) b.suspend = this.suspend(t);
+                    return b;
+                }),
+                (function suspend(t) {
+                    return function(v) {
+                        return this.done(t.of(this.run(v)));
+                    }
+                })
+            ),
+        // === ARR THREAD
+            (function makeArr(x, f, k) {
+                return function() {
+                    if (x.i < x.arr.length) {
+                        x.res[x.i] = f(x.arr[x.i], x.i++, x.arr);
+                        if (k && x.i == x.arr.length) {
+                            x.res = k(x.res);
+                        }
+                    }
+                    return x.i < x.arr.length ? x.next : x.pure;
+                }
+            }),
+            (function $_arrThread($_makeArr, $_makeInstruction, $_lazyValue) {
+                return function arrThread(f, k, m) {
+                    return function(arr) {
+                        var x  = { arr: arr, i: 0, res: arr.map($_lazyValue()) };
+                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeArr(x, f, k) ]) };
+                        x.pure = { pure: true,  value: x.res };
+                        return $_lazyValue(x.next);
+                    }
+                }
+            }),
+            (function arrThread(f) {
+                return function(x) {
+                    if (x.i < x.arr.length) {
+                        x.res[x.i] = f(x.arr[x.i], x.i++, x.arr);
+                        if (k && x.i == x.arr.length) {
+                            x.res = k(x.res);
+                        }
+                    }
+                    return x.i < x.arr.length ? x.next : x.pure;
+                }
+            }),
+        // === QUEUE THREAD
+            (function makeQueue(x, f, k) {
+                return function() {
+                    if (x.arr.length) {
+                        if (f(x.arr[(x.i<x.arr.length?x.i:(x.i=0))], x.item++, x.run++) && !(x.item = 0))
+                            if (x.i) x.arr.splice(x.i, 1);
+                            else x.arr.shift();
+                        else
+                            x.i++;
+                        if (k && !x.arr.length) k(x);
+                    }
+                    return x.arr.length ? x.cont : x.pure;
+                }
+            }),
+            (function $_queueThread($_makeQueue, $_makeInstruction, $_lazyValue) {
+                return function queueThread(f, k, m) {
+                    return function(arr) {
+                        var x  = { arr: arr, i: 0, item: 0, run: 0 };
+                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_makeQueue(x, f, k) ]) };
+                        x.cont = { pure: false, cont: true };
+                        x.pure = { pure: true,  value: x };
+                        return $_lazyValue(x.next);
+                    }
+                }
+            }),
+            (function queueThread(x) {
+                if (x.arr.length) {
+                    if (f(x.arr[(x.i<x.arr.length?x.i:(x.i=0))], x.item++, x.run++) && !(x.item = 0))
+                        if (x.i) x.arr.splice(x.i, 1);
+                        else x.arr.shift();
+                    else
+                        x.i++;
+                    if (k && !x.arr.length) k(x);
+                }
+                return x.arr.length ? x.cont : x.pure;
+            }),
+        // === LIST THREAD
+            (function makeList(x) {
+                if (x.arr.length) {
+                    x.arr = x.arr.filter(x.fn);
+                }
+                return x.arr.length ? x.next : x.pure;
+            }),
+            (function $_listThread($_makeList, $_makeInstruction, $_atom, $_lazyValue) {
+                return function listThread(f, m) {
+                    return function(arr) {
+                        var x  = { arr: arr.slice(0), fn: f };
+                        x.next = { pure: false, value: $_makeInstruction(m || 'yield', [ $_atom($_makeList, x) ]) };
+                        x.cont = { pure: false, cont: true };
+                        x.pure = { pure: true,  value: x.arr.slice(0) };
+                        return x.next;
+                    }
+                }
+            })
+    ),
+
+    (function MakeTypes2() {
+
+        return [].slice.call(arguments);
+    })(
+        // === Coyoneda === //
+            (function Coyoneda() {
                 return {
                     parent: 'Functor',
-                    klass: function Maybe(x, a) {
-                        this.id = this.id();
-                        if (x || typeof x != 'undefined')
-                            this._x = !a && x instanceof Function && x.length > 1 ? this.fn.curry(x) : x;
+                    klass: function Coyoneda(f, x) {
+                        this.id = this.ctor.$id = this.id();
+                        this.$$init(f, x);
                     },
                     ext: [
-                        (function prop() {
-                            var args = Array.prototype.slice.call(arguments);
-                            return this.map(this.property(args.shift()).apply(undefined, args));
+                        (function $$init(f, x) {
+                            if (f) this.mf = f;
+                            else if (!this.mf) this.mf = unit;
+                            if (x) this.mv = x;
                         }),
-                        (function get(key) {
-                            return this.map(this.pget(key));
+                        (function map(f) {
+                            return new this.constructor(this.$fn.compose(this.mf)(f), this.mv);
                         }),
-                        (function values(recur) {
-                            return this.map(this.pval(recur));
+                        (function bimap(f, g) {
+                            return this.of(this.$fn.compose(this.mf)(f), (g || unit)(this.mv));
                         }),
-                        (function $isNothing(v) {
-                            return v === null || v === undefined || v === false;
+                        (function bind(x, f) {
+                            return new this.constructor(f ? this.$fn.compose(this.mf)(f) : this.mf, x || this.mv);
                         }),
-                        (function isNothing() {
-                            return this._x === null || this._x === undefined || this._x === false;
+                        (function chain(f, x) {
+                            return (f ? this.$fn.compose(this.mf)(f) : this.mf)(x || this.mv);
                         }),
-                        (function ifSome(mf) {
-                            return this.isNothing() || !mf || !(mf instanceof Function) ? null : mf.call(this, this._x);
+                        (function lift(x) {
+                            return new this.constructor(this.$fn.lift(this.mv, this.mf, x), x);
                         }),
-                        (function filter(f) {
-                            return this.map(function(v) {
-                                if (f(v)) return v;
-                            });
+                        (function ftor() {
+                            return this.$fn.ftor(this);
                         }),
-                        (function chain(f) {
-                            if (f instanceof Function) {
-                                return this.ifSome(f || unit);
-                            }else if (this._x instanceof Function) {
-                                return this.ifSome(this.fn.pure(f));
-                            }else {
-                                return this.ifSome(f);
-                            }
-                        }),
-                        (function orElse(mv) {
-                            return this.isNothing() ? new this.constructor(mv instanceof Function ? mv() : mv) : this;
-                        }),
-                        (function map(mf) {
-                            return new this.constructor(this.chain(mf), true);
-                        }),
-                        (function run(f) {
-                            return this.chain(f || unit);
-                        }),
-                        (function ap(other) {
-                            return this.is(other) ? this.map(function(f) {
-                                return other.chain(f);
-                            }) : this.of(other).map(this._x);
-                        }),
-                        (function apply(other) {
-                            return other.ap(this);
-                        }),
-                        (function unit() {
-                            return this._x;
-                        }),
-                        (function join() {
-                            return this._x;
+                        (function run(x) {
+                            return x ? (this.mv ? (x instanceof Function ? x(this.mf(this.mv)) : this.mf(this.mv)(x)) : this.mf(x)) : (this.mv ? this.mf(this.mv) : this.mf);
                         })
                     ],
                     attrs: [
-                        (function of(x) {
-                            return x && x instanceof this ? x : new this(x);
+                        (function of(f, x) {
+                            if (!(f instanceof Function)) return new this(function(v) {
+                                return function(t) {
+                                    return t ? v.lift(t).run() : v.run;
+                                }
+                            }, f);
+                            return new this(f || unit, x);
                         }),
-                        (function pure(x) {
-                            return new this(x, true);
+                        (function lift(x, f) {
+                            return new this(f || unit, x);
+                        }),
+                        (function $of() {
+                            var ctor = this;
+                            return function() {
+                                return ctor.of.apply(ctor, arguments);
+                            }
                         })
                     ],
-                    toIO: function($iopure) {
-                        return function() {
-                            return this.chain($iopure);
-                        }
-                    },
-                    toMaybeIO: function($iof) {
-                        return function() {
-                            return $iof(this).lift(function(mbfn, value) {
-                                return mbfn.chain(function(fn) {
-                                    return this.of(value).chain(fn);
-                                });
-                            });
-                        }
-                    },
-                    toMaybe: function($maybe) {
-                        return function() {
-                            return this.map($maybe.of);
-                        }
-                    },
-                    runMaybe: function($maybe) {
-                        return function(v) {
-                            return $maybe.of(this.run(v));
-                        }
+                    lift: function(v, f, x) {
+                        return v ? f(v) : (x ? f : f());
                     },
                     init: function(type, klass, sys) {
-                        var root = this.$store.root, utils = root.get('utils');
-                        var property = klass.prop('property', utils.get('property'));
-                        klass.prop('pget', property('get'));
-                        klass.prop('pval', property('values'));
-                        klass.prop('curry', utils.get('curry'));
-                        var IO = this.find('IO');
-                        klass.prop('toIO',  type.toIO(IO.pure));
-                        klass.prop('toMaybeIO', type.toMaybeIO(IO.of));
-                        IO.prop('toMaybe',  type.toMaybe(klass));
-                        IO.prop('runMaybe', type.runMaybe(klass));
-                        this.root().base.prototype.maybe = klass.of;
+                        klass.prop('$fn', {
+                            compose: klass.find('Compose').prop('$fn'),
+                            lift: type.lift, ftor: sys.get('threads.ftor')
+                        });
                     }
                 };
             }),
-        // === Thread === //
+        // === Free === //
             (function() {
                 return {
-                    klass: function Thread(f, t) {
+                    klass: function Free(f, x, t) {
                         this._id = this.ctor.$id = this.id();
-                        this._x  = f;
-                        this._t  = t || '$enqueue';
+                        this._x  = this.$fn.ftor.is(f) ? (x ? f.lift(x) : f) : this.$fn.ftor.of(this.$fn.makeBind(this.$fn.coyo.is(f) ? f : this.$fn.coyo.of(f), {}, this), x);
+                        this._t  = t || this._t || '$enqueue';
                     },
                     ext: [
-                        (function of(x) {
-                            return this.constructor.of(x);
+                        (function of(f, x) {
+                            return this.constructor.of(f, x);
                         }),
                         (function map(f) {
-                            return new this.constructor(this.$fn('mapThread')(this._x, f), this._t);
+                            return new this.constructor(this._x.map(this.$fn.map(f)), null, this._t);
+                        }),
+                        (function lift(x) {
+                            return new this.constructor(this._x.lift(x).lift());
                         }),
                         (function bind(f, x) {
-                            return new this.constructor(this.$fn('bindThread')(this._x, this.$fn('makeBind')(f, x || {}, this)), this._t);
+                            return new this.constructor(this._x.map(this.$fn.atomThread(this.$fn.makeBind(f, x || {}, this).run)), null, this._t);
                         }),
-                        (function run(f) {
-                            this[this._t].enqueue(f ? this.$fn('mapThread')(this._x, f) : this._x);
+                        (function run(x, f) {
+                            return this[this._t].enqueue(this._x.chain(f ? this.$fn.map(f) : null, x));
+                        }),
+                        (function cont(x) {
+                            return this.$fn.cont.of(this.$fn.kont(new this.constructor(this._x.lift(x))));
                         }),
                         (function info() {
                             return this[this._t];
@@ -1835,10 +2115,7 @@
                     ],
                     $ext: function() {
                         return [
-                            { name: '$fn', value: this.get(this.threads)('path') },
-                            { name: '$proc', value: this.process },
-                            { name: '$next', value: this.enqueue },
-                            { name: '$make', value: this.get('addThreads') },
+                            { name: '$fn', value: this.threads.select('atomThread', 'makeBind') },
                             { name: '$enqueue', value: this.threads.set('enqueue', this.threads.get('addThreads')([], this.enqueue, '$enqueue')) },
                             { name: '$anim', value: this.threads.set('anim',
                                 this.threads.get('addThreads')([], this.process.get('animFrame.enqueue'), '$anim'))
@@ -1848,104 +2125,123 @@
                     attrs: (function() {
                         return [].slice.call(arguments).apply();
                     })(
-                        (function(t, p, of, arr, que, lst, wrap, raf) {
-                            var parse = p(t);
+                        (function(t, ftor, coyo, c, of, arr, que, lst, wrap, raf) {
+                            var cast  = c(t);
                             var bindL = t.get('bindLazy');
                             var lazyV = t.get('lazyValue');
                             return [
-                                parse,
-                                of(parse),
-                                arr(bindL, lazyV, t.get('arrThread')),
-                                que(bindL, lazyV, t.get('queueThread'), wrap),
-                                lst(bindL, lazyV, t.get('listThread'), wrap),
-                                raf
+                                cast,
+                                of(cast),
+                                arr(coyo, bindL, lazyV, t.get('arrThread'), wrap),
+                                que(coyo, bindL, lazyV, t.get('queueThread'), wrap),
+                                lst(coyo, bindL, lazyV, t.get('listThread'), wrap),
+                                raf(coyo, t.get('listThread'))
                             ];
                         }),
                         this.get('threads'),
+                        this.klass('Functor'),
+                        this.klass('Coyoneda'),
                         (function(cmd) {
-                            return function parse(v) {
+                            return function cast(v) {
                                 if (v instanceof Function) {
                                     return v;
-                                }else {
+                                }else if (v) {
                                     return cmd.get('lazyValue')(v);
                                 }
                             }
                         }),
-                        (function(parse) {
-                            return function of(v) {
-                                return new this(parse(v));
+                        (function(cast) {
+                            return function of(f, x) {
+                                return new this(f, x);
                             }
                         }),
-                        (function(bindLazy, lazyValue, arrThread) {
-                            return function arr(a, f, k, m) {
-                                return new this(bindLazy(lazyValue(a), arrThread(f, k, m)));
+                        (function(coyo, bindLazy, lazyValue, arrThread, wrapThread) {
+                            return function arr(a, f) {
+                                return wrapThread(new this(coyo.of(arrThread(f), a)))(a);
                             }
                         }),
-                        (function(bindLazy, lazyValue, queThread, wrapThread) {
-                            return function queue(a, f, k, t, m) {
-                                return wrapThread(a, new this(queThread(f, k, m)(a), t));
+                        (function(coyo, bindLazy, lazyValue, queThread, wrapThread) {
+                            return function queue(f) {
+                                return wrapThread(new this(coyo.is(f) ? f : coyo.of(f)));
                             }
                         }),
-                        (function(bindLazy, lazyValue, listThread, wrapThread) {
-                            return function list(a, f, k, t, m) {
-                                return wrapThread(a, new this(bindLazy(lazyValue(a), listThread(f, k, m)), t));
+                        (function(coyo, bindLazy, lazyValue, listThread, wrapThread) {
+                            return function list(f, m) {
+                                return wrapThread(new this(coyo.is(f) ? f : coyo.of(listThread(f, m))).lift());
                             }
                         }),
-                        (function(wrap) {
-                            return function(arr, thread) {
-                                return wrap(wrap, arr, thread);
-                            }
-                        })(
-                            (function(wrap, arr, thread) {
-                                var count = 1;
+                        (function wrap(thread) {
+                            return function(arr) {
+                                var stats = { count: 0, size: 0, max: 0 };
                                 return {
+                                    id: thread._id,
                                     info: function() {
-                                        return arr;
+                                        return stats;
                                     },
                                     bind: function(f, x) {
                                         return wrap(wrap, arr, thread.bind(f, x));
                                     },
                                     push: function(args, appl) {
-                                        if (!(arr.length * (appl ? arr.push.apply(arr, args) : arr.push(args)))) {
-                                            thread.run();
-                                        }else if (false && count++ > 80 && (count = 1)) {
-                                            var log = sys.run().log;
-                                            log('====');
-                                            sys.klass('Functor').of(arr).run(log);
+                                        if (++stats.count && !(arr.length * (appl === true ? arr.push.apply(arr, args) : arr.push(args)))) {
+                                            stats.size = arr.length; 
+                                            thread.run(arr);
+                                        }else if (arr.length > stats.max) {
+                                            stats.max  = arr.length;
                                         }
                                         return this;
+                                    },
+                                    lift: function(x) {
+                                        return wrap(thread.lift(x))(arr);
                                     },
                                     add: function() {
                                         arr.push.apply(arr, arguments);
                                         return this;
                                     },
                                     run: function(f) {
-                                        thread.run(f);
+                                        thread.run(arr, f);
                                         return this;
                                     }
                                 };
-                            })
-                        ),
-                        (function raf(a, f, k) {
-                            return this.list(a, f, k, '$anim', 'suspend');
+                            }
+                        }),
+                        (function(coyo, listThread) {
+                            return function raf(f) {
+                                return new this(coyo.is(f) ? f : coyo.of(listThread(f, 'suspend')));
+                            }
                         })
                     ),
-                    init: function(type, klass) {
-                        var store = klass.$store.root;
-                        type.$ext.call({
-                            get: store.get('utils.target'),
-                            threads: store.get('threads'),
-                            process: store.get('process'), enqueue: store.get('process.nextTick.enqueue')
-                        }).reduce(function(r, v) { r.prop(v.name, v.value); return r; }, klass);
+                    cont: function() {
+                        return this.extend(function ContF(mv, mf) {
+                            this.$super(mv, mf);
+                        }, {
+                            mf: unit
+                        })
+                    },
+                    kont: function(free) {
+                        return function $_pure(k) {
+                            free.run(k);
+                        }
+                    },
+                    map: function(f) {
+                        return this.atomThread(this.wrap(f));
+                    },
+                    init: function(type, klass, sys) {
+                        var $st = klass.$store.root;
+                        var $fn = type.$ext.call({
+                            get: $st.get('utils.target'),
+                            threads: $st.get('threads'),
+                            process: $st.get('process'), enqueue: $st.get('process.nextTick.enqueue')
+                        }).reduce(function(r, v) { r.prop(v.name, v.value); return r; }, klass).prop('$fn');
+                        $fn.cast = klass.$ctor.cast;
+                        $fn.coyo = klass.find('Coyoneda');
+                        $fn.ftor = klass.find('Coyoneda').extend('CoyoF');
+                        $fn.cont = type.cont.call(klass.find('Cont'));
+                        $fn.kont = type.kont;
+                        $fn.wrap = sys.get('utils.andThen')(sys.get('threads.makeThread'));
+                        $fn.map  = sys.get('utils.compose')($fn.wrap)($fn.atomThread);
                     }
                 };
-            })
-    ),
-
-    (function MakeTypes2() {
-
-        return [].slice.call(arguments);
-    })(
+            }),
         // === Cell === //
             (function() {
                 return {
@@ -2023,14 +2319,25 @@
                     },
                     ext: [
                         (function $$init(x, f) {
-                            if (x) this.mv = this.$cast(x);
+                            if (x) this.mv = this.$$parse(x);
                         }),
-                        { name: 'async', value: this.get('async').select('count', 'times', 'inject', 'eject', 'delay') },
+                        (function $$parse(x) {
+                            return x instanceof Array ? (x.length == 1 ? this.$cast(x.shift()) : this.$fn.parallel.apply(undefined, x.map(this.$cast))) : this.$cast(x);
+                        }),
+                        { name: 'async', value: this.get('async').select('series', 'count', 'times', 'inject', 'eject', 'delay') },
                         (function times(x) {
-                            return this.$count(this.of(this.async.times(x, this.mv)), '$$of');//this.lazy(this.mv)));
+                            var t = parseInt(x || 0) || 0;
+                            if (t > 1) {
+                                return this.of(this.async.times(x, this.lazy(this.mv)));
+                            }else {
+                                return this;
+                            }
                         }),
                         (function delay(ms) {
-                            return this.$count(this.of(this.async.delay(this.mv, ms)), '$$of');
+                            return this.of(this.async.delay(this.mv, ms));
+                        }),
+                        (function then() {
+                            return this.of(this.async.series(this.mv, this.$$parse([].slice.call(arguments))));
                         }),
                         (function parse(succ, fail) {
                             return function(result) {
@@ -2038,11 +2345,23 @@
                             }
                         }),
                         (function eject(succ, fail) {
-                            return this.$count(this.of(this.async.eject(this.mv, this.parse(succ, fail))), '$$of');
+                            return this.of(this.async.eject(this.mv, this.parse(succ, fail)));
                         })
                     ],
+                    of: function(of) {
+                        return function() {
+                            return of.call(this, [].slice.call(arguments));
+                        }
+                    },
                     init: function(type, klass, sys) {
+                        klass.of = type.of(klass.of);
                         klass.prop('$cast', klass.prop('$$cast').bind(klass.proto()));
+                        klass.prop('$fn', {
+                            array: sys.get('async.array'),
+                            series: sys.get('async.series'),
+                            parallel: sys.get('async.parallel'),
+                            compose: klass.find('Compose').prop('$fn')
+                        });
                     }
                 };
             }),
@@ -2059,15 +2378,16 @@
                     ext: [
                         (function make(info, handler) {
                             if (info && info.uid == this._listener.uid && info.hid) {
-                                info.hid = this.hid();
+                                info.hid = this.$fn.hid();
                                 return info;
                             }else {
-                                return {
-                                    uid: this._listener.uid, hid: this.hid(), opts: info.opts || {},
+                                var hndl = {
+                                    uid: this._listener.uid, hid: this.$fn.hid(), opts: info.opts || {},
                                     elem: info.element, eid: 0, name: info.name, ref: info.selector,
-                                    filter: info.filter, throttle: info.throttle,
-                                    run: handler, atom: info.throttle ? handler : this.lazy(handler)
-                                }
+                                    filter: info.filter, throttle: info.throttle, run: handler
+                                };
+                                hndl.atom = info.throttle ? handler : this.$fn.lazy(handler, hndl);
+                                return hndl;
                             }
                         }),
                         (function toggle(onoff) {
@@ -2096,7 +2416,8 @@
                         (function remove(info) {
                             var idx = 0, arr = this._handlers, hnd, test;
                             while (idx < arr.length && (test = arr[idx])) {
-                                if (info.hid == test.hid && info.uid == test.uid) {
+                                if (info.hid) {
+                                    if (info.hid != test.hid && ++idx) continue;
                                     /* !FOUND! */
                                 }else if (info.target) {
                                     if (info.ref.concat('.', info.target).indexOf(test.ref.replace('.%', '')) < 0 && ++idx) continue;
@@ -2127,9 +2448,17 @@
                             return new this(identifier);
                         })
                     ],
+                    lazy: function(f, x) {
+                        return function(v) {
+                            return function() {
+                                return f(v, x);
+                            }
+                        }
+                    },
                     init: function(type, klass, sys) {
-                        klass.prop('hid', this.makeID(''));
-                        klass.prop('lazy', sys.get('threads.mapLazy'));
+                        klass.prop('$fn', {
+                            hid: this.makeID(''), lazy: type.lazy
+                        });
                     }
                 };
             }),
@@ -2144,14 +2473,15 @@
                     },
                     ext: [
                         (function thread() {
-                            return this.klass('Thread').$ctor.queue([], function(v) {
-                                return v() || true;
-                            });
+                            return this.free;
                         }),
                         (function enqueue(item) {
                             item.eid = this.eid();
                             this.get(item.type).run(item).map(this.thread.push);
                             return this;
+                        }),
+                        (function proxy(type, item) {
+                            return this.enqueue(item.clone({ type: type }));
                         }),
                         (function wrap() {
                             var type = this.parent().store();
@@ -2172,7 +2502,16 @@
                             return this.set(listener.name, this.create(listener));
                         })
                     ],
+                    free: function() {
+                        return this.find('Free').$ctor.queue(this.find('Coyoneda').of(function() {
+                            return function(v) {
+                                v.dequeue();
+                                return v.length ? this.cont() : this.done();
+                            }
+                        }))([]);
+                    },
                     init: function(type, klass, sys) {
+                        klass.prop('free', type.free.call(this).lift([]));
                         klass.prop('eid', this.makeID(false));
                     }
                 };
@@ -2193,16 +2532,7 @@
                             this._active = this._active || (this._active = this._lstnrs.set('active', []));
                         }),
                         (function thread() {
-                            return this.klass('Thread').$ctor.queue([], this.sys().get('utils.bin')
-                            (function next(handlers, value) {
-                                handlers.map(function(hndl) {
-                                    if (value.ref.indexOf(hndl.ref) === 0) {
-                                        hndl.run(value);
-                                    }
-                                    value.count++;
-                                });
-                                return true;
-                            })(this._active));
+                            return this.free([]).lift(this.uid());
                         }),
                         (function addEventListener(/* instance, name, selector, target, opts */) {
                             var args = [].slice.call(arguments), instance = args.shift(), lstr;
@@ -2223,8 +2553,17 @@
                             }
                         }),
                         (function removeEventListener(info) {
-                            var signal = this.find(info.sid || info.uid).get(info.type || info.name || 'change');
-                            if (signal) return signal.remove(info);
+                            if (info.sid || info.uid) {
+                                var signal = this.find(info.sid || info.uid).get(info.type || info.name || 'change');
+                                if (signal) return signal.remove(info);
+                            }else if (this._active && this._active.length) {
+                                var index = 0, signal;
+                                while (index < this._active.length) {
+                                    if (this._active[index].name == info) signal = this._active.splice(index, 1);
+                                    else index++;
+                                }
+                                return signal;
+                            }
                         }),
                         (function makeEvent(value) {
                             return {
@@ -2254,9 +2593,25 @@
                             return new this(opts);
                         })
                     ],
+                    free: function() {
+                        return this.find('Free').$ctor.queue(this.find('Coyoneda').of(function(handlers) {
+                            return function(values) {
+                                sys.find(handlers, true).get('listeners.active').map(function(hndl) {
+                                    if (values[0].ref.indexOf(hndl.ref) === 0) {
+                                        hndl.run(values[0]);
+                                    }
+                                    values[0].count++;
+                                });
+                                return values.shift() && values.length ? this.cont() : this.done();
+                            }
+                        }));
+                    },
                     init: function(type, klass, sys) {
-                        var Root   = sys.root; klass.prop('isEvents', true);
-                        var Events = Root._events = Root.child('events', klass.$ctor);
+                        klass.prop('free', type.free.call(this));
+                        klass.prop('isEvents', true);
+
+                        var root = sys.root;
+                        root.child('events', klass.$ctor);
                     }
                 };
             }),
@@ -2320,6 +2675,7 @@
                         }),
                         (function makeQueue(queue) {
                             return function(name, type) {
+                                if (!name) return queue;
                                 var child = queue.child(name);
                                 child._type = type || name;
                                 return child;
@@ -2486,9 +2842,13 @@
                         store: [
                             (function matches(element, selector) {
                                 var ref = element.identifier();
+                                var sel = selector.split('.');
+                                var trg = sel[sel.length-1];
                                 return function(evt) {
-                                    if (evt.stop) return false;
-                                    if (evt && evt.target && (!selector || (evt.ref.replace(ref, '')+'.'+evt.target).substr(1).matches(selector))) {
+                                    if (evt.stop || !evt.target) return false;
+                                    if (!selector || (evt.target.matches(trg) && element.lookup(sel.slice(0, -1)).chain(function(elem) {
+                                        return elem.equals(evt.uid);
+                                    })) || (evt.ref.replace(ref, '')+'.'+evt.target).substr(1).matches(selector)) {
                                         if (!element) return true;
                                         return element.pertains(evt);
                                     }
@@ -2504,6 +2864,7 @@
                                     ref: evt.ref,
                                     type: evt.type,
                                     count: evt.count || 0,
+                                    level: evt.level,
                                     target: evt.target,
                                     action: evt.action,
                                     value: evt.value
@@ -2533,19 +2894,17 @@
                                 if (!elem.id) elem.id = name;
                             }
                             var type = node.get('type') || node.set('type', base._type);
-                            var list = node.get('listener') || node.set('listener', this.maybeEventElem(elem));
                             var disp = node.get('dispatcher')
-                                || node.set('dispatcher', this.wrapDispatcher(node.store().wrap()));
-                            var make = node.get('createEvent')
-                                || node.set('createEvent', base.parent(base._type).get('createEvent'));
+                                || node.set('dispatcher', this.wrapDispatcher(node.store().wrap())(this.maybeEventElem(elem)));
                             return this.constructor.make.run(node);
                         })
                     ),
                     make: (function(node, name) {
+
                         return node.get(name) ||
                             node.store().make(
-                                node.identifier(), name, node.get('createEvent'),
-                                    node.get('dispatcher')(node.get('listener'))(name));
+                                node.identifier(), name, node.closest('queue').get(node.get('type'), 'createEvent'),
+                                    node.get('dispatcher')(name));
                     }),
                     init: function(type, klass, sys) {
                         var $ctor = klass.$ctor;
@@ -2573,22 +2932,27 @@
                     parent: 'Node',
                     klass: function Component(opts) {
                         if (!opts.parent) opts.parent = this._node;
-
                         this.$$init(opts);
+                        this._events = (opts.parent._events || opts.parent.get('events')).child({ name: 'events', parent: this });
                         this.connect();
+
                         if (opts.view) this.view = this.konst(this.set('view', opts.view));
                         this._started  = 1;
 
                         this.node('$fn');
                         this.set('type', (opts.type || this.constructor.name).toDash());
-                        this.parent().set(this.cid(), this);
                         
                         this.parse(opts);
                         this.update(opts);
                     },
                     ext: [
+                        { name: '_children', value: 'nodes' },
                         (function initialize() {}),
-                        (function onAttach() {
+                        (function parse(conf) {
+                            return this.configure(conf);
+                        }),
+                        (function onAttach(evt, hndl) {
+                            this.removeEventListener(hndl);
                             this.enqueue(this.comp(function() {
                                 this.initialize();
                                 return true; 
@@ -2603,65 +2967,24 @@
                             return { 'class' : this.constructor.name.toLowerCase() + ' ' + this.origin() };
                         }),
                         (function view() {
-                            return (this.view = this.konst(this.child('view', this.deps('components.view') || this.klass('View').$ctor)))();
-                        }),
-                        (function state(key, value) {
-                            return (this._state || (this._state = this.node('state'))).acc(key, value);
+                            return (this.view = this.konst(this.child('view', this.deps ? this.deps('components.view') : this.klass('View').$ctor)))();
                         }),
                         (function attach(selector) {
-                            return this.view().parent('$fn.attach').ap(selector || this.module().$el()).run().map(this.bin(function(comp, el) {
+                            return this.view().parent('$fn.attach').ap(selector ? (selector.unit ? selector.unit() : selector) : this.module().$el()).run().map(this.bin(function(comp, el) {
                                 var elem = el.parentElement;
+                                if (!comp.state('attach')) comp.observe('change', 'state.attach', 'onAttach');
                                 comp.state('attach', elem.id || elem.className);
                                 return elem;
                             }));
                         }),
                         (function display(state) {
-                            return this.view().parent('$fn.display').run(this.state('display', state || ''));
+                            return this.maybe().map(function(comp) {
+                                return comp.view().parent('$fn.display').run(comp.state('display', state || ''));
+                            });
                         }),
                         (function update() {}),
-                        (function events() {
-                            var comp = this, events, list = [];
-                            if ((events = this.get('data.events.data'))) {
-                                list.push(events.store().bind(function(method, evt) {
-                                    comp.observe.apply(comp, evt.split(':').append(comp.handler(method)));
-                                }));
-                            }
-                            if ((events = this.get('data.events.dom'))) {
-                                list.push(events.store().bind(function(method, evt) {
-                                    return comp.on.apply(comp, evt.split(':').append(method.split('|')));
-                                }));
-                            }
-                            if ((events = this.get('data.proxy.data'))) {
-                                list.push(events.store().bind(function(method, evt) {
-                                    return comp.proxy.apply(comp, evt.split(':').append(method));
-                                }));
-                            }
-                            if ((events = this.get('data.proxy.dom'))) {
-                                list.push(events.store().bind(function(method, evt) {
-                                    return comp.proxy.apply(comp, evt.split(':').append(method));
-                                }));
-                            }
-                            if (!list.length) {
-                                comp.parse();
-                                comp.start();
-                            }
-                            return list.length ? list.fmap(function() {
-                                comp.parse();
-                                comp.start();
-                                return comp.main() || comp;
-                            }) : (this.main() || this);
-                        }),
-                        (function proxy(name, selector, path, call) {
-                            return ((this._proxy || (this._proxy = this.node('proxy'))).get(name)
-                                || (this._proxy.child(name))).set(selector.split('.').first(), { selector: selector, path: path, call: !!call });
-                        }),
-                        (function $proxy(evt, proxy) {
-                            if (proxy && (evt.currentTarget || (evt.currentTarget = evt.target)).matches(proxy.selector))
-                                this.parent().emit('change', proxy.path, ('' + (evt.value || evt.target.value || evt.target.id || evt.target.innerText || '')).toLowerCase(), evt.value || evt.currentTarget.value || evt.currentTarget.innerText || '');
-                        }),
-                        (function control() {
-                            return this.get([ 'data.control' ].concat([].slice.call(arguments)).join('.'))
-                                || this.klass('Obj').of(this.conf.control ? this.extend({}, this.conf.control, true) : {}, this);
+                        (function queue(path) {
+                            return this.module().queue(path);
                         }),
                         (function $fn(name) {
                             return this.view().parent().get('$fn', name);
@@ -2672,93 +2995,8 @@
                         (function on(name, selector, handler, throttle) {
                             return this.view().on(name, selector, typeof handler == 'string' ? this.handler(handler) : handler, parseInt(throttle || '') || 0);
                         }),
-                        (function hhandler(fn) {
-                            var ctx = this;
-                            var ref = fn.indexOf('.') > 0 ? fn.split('.').slice(0, -1).join('.') : '';
-                            return function() {
-                                return ref ? ctx.get(fn).apply(ctx.get(ref), arguments) : ctx[fn].apply(ctx, arguments);
-                            }
-                        }),
-                        (function handler(fn) {
-                            var ctx = { store: this, fn: fn, ref: fn.indexOf('.') > 0 ? fn.split('.').slice(0, -1).join('.') : '' };
-                            return function() {
-                                return ctx.run ? ctx.run.apply(ctx.ctx, arguments) : (ctx.ref
-                                ? (ctx.run = ctx.store.get(ctx.fn)).apply((ctx.ctx = ctx.store.get(ctx.ref)), arguments)
-                                : (ctx.run = ctx.store[ctx.fn]).apply((ctx.ctx = ctx.store), arguments));
-                            }
-                        }),
-                        (function binding(evt) {
-                            if (evt.src == 'dom') {
-                                if (evt.target && evt.currentTarget) {
-                                    var path = evt.currentTarget.getAttribute('data-bind-path');
-                                    var name = evt.target.getAttribute('data-key') || evt.target.id;
-                                    return this.lookup(path).map(function(node) {
-                                        return node.set(name, evt.target.value);
-                                    });
-                                }
-                            }else if (evt.src == 'data' && this.view()) {
-                                return this.view().binding(evt);
-                            }
-                        }),
-                        (function extend(base, ext, keys) {
-                            return this.ctor.update(base, ext, keys);
-                        }),
-                        (function parse(conf) {
-                            conf || (conf = {});
-                            var evts = this.get('data.events');
-
-                            var opts = this._opts || (this._opts = this.node('opts').parse(this.conf.opts || {}));
-                            var data = this._data || (this._data = this.node('data').parse({
-                                id: this.uid(), main: {}, current: {} }, true));
-
-                            if (conf.opts) this._opts.parse(conf.opts);
-
-                            var cdata = conf.data || {};
-                            if (conf.tmpl) cdata.tmpl = conf.tmpl;
-                            else if (!data.get('tmpl')) cdata.tmpl = {};
-                            if (conf.proxy) cdata.proxy = conf.proxy;
-                            if (conf.events) cdata.events = conf.events;
-                            if (conf.control) cdata.control = conf.control;
-
-                            if (this.conf.data || conf.data || cdata.tmpl) {
-
-                                if (!this.conf.data) this.conf.data = {};
-                                if ((cdata.tmpl || this.conf.data.tmpl)
-                                    && (cdata.tmpl || !data.get('tmpl')))
-                                        this.data({ tmpl: this.xtnd({ attr: this.konst({ 'class' : this.get('type').concat(' ', this.origin()) }) }, this.extend(this.conf.data.tmpl, cdata.tmpl)) });
-
-                                if ((this.conf.data.events || cdata.events)
-                                    && (cdata.events || !data.get('events')))
-                                        this.data({ events: this.extend(this.conf.data.events, cdata.events) });
-                                else if ((this.conf.events || conf.events)
-                                    && (conf.events || !data.get('events')))
-                                        this.data({ events: this.extend(this.conf.events, conf.events) });
-
-                                if ((this.conf.proxy || conf.proxy)
-                                    && (conf.proxy || !data.get('proxy')))
-                                        this.data({ proxy: this.extend(this.conf.proxy, conf.proxy) });
-
-                                if ((this.conf.control || conf.control)
-                                    && (conf.control || !data.get('control')))
-                                        this._data.set('control', this.klass('Obj').of(this.extend(this.conf.control, conf.control, true), this));
-                            }
-                            if (!evts && this.get('data.events')) return this;
-                            if ((cdata.main || (this.conf.data && this.conf.data.main))
-                                && (cdata.main || !data.get('main').length()))
-                                    this.data({ main: this.extend(this.conf.data.main, cdata.main) });
-
-                            if (conf.data) this._data.parse(conf.data, 1);
-
-                            return this;
-                        }),
                         (function route(ext) {
                             return 'components/'+this._cid+'/'+this._cid+(ext ? ('.'+ext) : '');
-                        }),
-                        (function data(v1, v2) {
-                            return v1 ? (typeof v1 == 'object' ? this._data.parse(v1, 2) : this._data.acc(v1, v2)) : this._data.values(true);
-                        }),
-                        (function opts(v1, v2) {
-                            return v1 ? (typeof v1 == 'object' ? this._opts.parse(v1, 2) : this._opts.acc(v1, v2)) : this._opts.values(true);
                         }),
                         (function eff(name, value) {
                             return value ? (this.$eff[name] = value) : (name ? this.$eff[name] : this.$eff);
@@ -2784,21 +3022,27 @@
                             }
                             return cell.kont();
                         }),
-                        (function component(ref, type) {
+                        (function component() {
+                            var args = [].slice.call(arguments);
+                            var ref  = args.shift().split('.');
+                            var type = args.length ? args.join('.') : '';
                             var path = type ? type.split('.') : ref.split('.');
-                            var name = ref;
-                            var comp = this.get(name);
+                            var name = ref.pop();
+                            var prnt = ref.length ? this.get(ref) : this;
+                            var comp = prnt.get(name);
                             if (!comp) {
                                 var cmps = this.deps(path.length > 1 ? path.shift() : 'components');
                                 var code = path.length ? path.join('.') : name;
-                                if (cmps[code]) {
-                                    comp = this.set(name, cmps[code].create({ name: name, parent: this })); 
+                                if (cmps[code] && cmps[code].create) {
+                                    comp = prnt.set(name, cmps[code].create({ name: name, parent: prnt })); 
+                                }else if (cmps[code]) {
+                                    comp = cmps[code];
                                 }else if (cmps['$'+code]) {
-                                    comp = cmps['$'+code].create({ name: name, parent: this });
+                                    comp = cmps['$'+code].create({ name: name, parent: prnt });
                                 }else if (cmps[code.replace('.', '.$')]) {
-                                    comp = cmps[code.replace('.', '.$')].create({ name: name, parent: this });
+                                    comp = cmps[code.replace('.', '.$')].create({ name: name, parent: prnt });
                                 }else if (!type) {
-                                    comp = this.klass('Component').of({ name: name, parent: this });
+                                    comp = prnt.klass('Component').of({ name: name, parent: prnt });
                                 }
                             }
                             return comp;
@@ -2829,6 +3073,14 @@
                                 else cell.set(this);
                             }
                             return this;
+                        }),
+                        (function once(k) {
+                            var cell = this._cell;
+                            if (!cell) return this.run(k);
+                            return this;
+                        }),
+                        (function chain(f) {
+                            return this.cont().bind(f);
                         }),
                         (function pure() {
                             var comp = this;
@@ -2875,11 +3127,12 @@
                     },
                     init: function(type, klass, sys) {
                         var proto  = klass.proto(), ctor = klass.$ctor, root = sys.root;
-                        proto.conf = { opts: { js: true, css: false, tmpl: true } };
+                        proto.conf = { opts: { js: true, css: false, tmpl: true }, def: { main: {}, current: {} } };
                         proto.$eff = {};
-                        proto.xtnd = root.get('utils.extend');
+                        proto.cmpt = klass.$ctor;
                         proto.comp = root.get('utils.call1')(type.comp);
                         proto.enqueue = root.get('process.nextTick.enqueue');
+                        proto.raf  = root.get('process.animFrame.enqueue');
                         proto.done = type.done(this.find('Cell'));
                     }
                 };
@@ -2890,12 +3143,14 @@
                     parent: 'Component',
                     klass: function Module(opts) {
                         this.$super.call(this, opts);
-                        this.connect();
                     },
                     ext: [
                         (function origin(plural) {
 
                             return plural ? 'modules' : 'module';
+                        }),
+                        (function queue(path) {
+                            return this.listener.getQueue(this.cid()).get(path);
                         }),
                         (function connect() {
                             var ctor = this.klass('Listener').$ctor;
@@ -2913,8 +3168,8 @@
                             return function routes(router) {
                                 return add(
                                     router,
-                                        make(sys.run().eff('sys.loader.component'),
-                                            show(sys.run().eff('dom.elements.children').run(display('none'), '#root')('>')))
+                                        make(sys.eff('sys.loader.component'),
+                                            show(sys.eff('dom.elements.children').run(display('none'), '#root')('>'), this))
                                 );
                             }
                         })(
@@ -2927,13 +3182,19 @@
                                     return elem;
                                 }
                             }),
-                            (function(display) {
-                                return function(mod) {
-                                    mod.display('none');
-                                    mod.attach('#root');
+                            (function(display, main) {
+                                return function(show) {
+                                    show.display('none');
+                                    show.parent().initialize();
+                                    show.attach('#root');
 
                                     display.run().run(function() {
-                                        mod.display('block');
+                                        show.display('block').chain(function() {
+                                            var root = document.body;
+                                            var curr = main.state('current');
+                                            if (curr) root.classList.remove(curr);
+                                            root.classList.add(main.state('current', show.cid()));
+                                        });
                                     });
                                 }
                             }),
@@ -3251,7 +3512,6 @@
                     }
                 };
             })
-
     ),
 
     (function MakeEffects() {
@@ -3276,12 +3536,13 @@
                             var curr = router.getFromHash();
                             if (!user.auth() || curr == 'auth') {
                                 router.setRoute('auth');
-                                return sys.eff('sys.loader.component').run('modules/auth/auth', 'auth').cont();
                             }else {
                                 router.setRoute(curr);
-                                return sys.eff('sys.loader.component').run('modules/application/application', 'home').cont();
+                                if (curr && curr != 'app') {
+                                    return sys.eff('sys.loader.component').run('modules/application/application', 'app').cont();
+                                }
                             }
-                        }).run(function(app) {
+                        }).run(function() {
                             sys.get('components').routes(sys.get('router'));
                         });
                     }).cont();

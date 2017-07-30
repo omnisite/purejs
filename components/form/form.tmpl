@@ -4,10 +4,18 @@
         <input id="{{=it.id}}" data-bind-name="{{=it.id}}" type="{{=it.type}}" class="form-control" placeholder="{{=it.placeholder}}">
     </div>
 </script>
-<script id="dropdown" type="text/template">
+<script id="textarea" type="text/template">
+    <div class="form-group{{? it.class }} {{=it.class}}{{?}}">
+        <label for="{{=it.id}}">{{=it.label}}</label>
+        <textarea id="{{=it.id}}" data-bind-name="{{=it.id}}" type="{{=it.type}}" class="form-control" placeholder="{{=it.placeholder}}">
+        </textarea>
+    </div>
+</script>
+<script id="select" type="text/template">
     <div class="form-group{{? it.class }} {{=it.class}}{{?}}">
         <label for="{{=it.id}}">{{=it.label}}</label>
         <select id="{{=it.id}}" data-bind-name="{{=it.id}}" class="form-control"{{? it.data }} data-source="{{=it.data}}"{{?}}>
+            {{? it.empty }}<option>-</option>{{?}}
             {{~it.options :value:index}}
             <option>{{=value}}</option>
             {{~}}
@@ -22,8 +30,17 @@
 <script id="button" type="text/template">
     <button type="{{=it.type}}" class="btn{{? it.class }} {{=it.class}}{{?}}">{{=it.label}}</button>
 </script>
+<script id="component" type="text/template">
+    <div class="form-group">
+        <label for="{{=it.id}}">{{=it.label}}</label>
+        <div id="{{=it.id}}" class="{{? it.class }}{{=it.class}}{{??}}{{=it.klass}}{{?}}" data-klass="{{=it.klass}}"{{? it.path }} data-path="{{=it.path}}"{{=it.path}}{{?}}></div>
+    </div>
+</script>
 <script id="style" type="text/template">
     .form {
         position: absolute; top: 100px; left: 50px; border: 1px solid #EEE; padding: 20px;
+    }
+    .form .code-edit {
+        height: 150px; border: 1px solid #DDD;
     }
 </script>

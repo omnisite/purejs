@@ -1,5 +1,5 @@
 .carousel.carousel-fit {
-  position: relative; margin-top: 20%;
+  position: relative; margin-top: 10%;
 }
 .carousel.carousel-fit.slide {
   overflow: hidden;
@@ -16,6 +16,9 @@
 }
 .carousel-inner > .item {
   width: 50%; float: left;
+}
+.carousel-inner > .item > div {
+  display: inline-block; position: relative; height: auto;
 }
 .carousel-inner.prev {
   left: -100%;
@@ -41,13 +44,23 @@
 .carousel.carousel-fit .carousel-inner > .item > img {
   display: inline-block;
 }
-.carousel.carousel-fit .carousel-inner > .item > .carousel-caption {
-  bottom: 0;
-  left: 0;
-  right: 0;
+.carousel.carousel-fit .carousel-inner > .item .carousel-caption {
+  bottom: 0; left: 0; right: 0; width: 100%;
 }
 .modal-footer .carousel-control {
-  top: 10px;
+  top: 10px; background-image: none;
+}
+.modal-footer .carousel-control span:hover {
+  font-size: 200%;
+  -webkit-transition: -webkit-transform 2s ease-in-out;
+  -o-transition: -o-transform 2s ease-in-out;
+  transition: transform 2s ease-in-out;
+}
+.modal-footer .carousel-control.left span:hover {
+  margin: -15px 0 0 -15px;
+}
+.modal-footer .carousel-control.right span:hover {
+  margin: -15px -5px 0 0;
 }
 .modal-header .btn .glyphicon {
   margin-right: 4px; top: 3px; font-size: 1.1em;

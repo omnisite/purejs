@@ -30,13 +30,12 @@ define(function() {
 			},
 			control: {
 				main: {
+					io: function() {
+						return (this._toggle || (this._toggle = this.root('view.fn.eff.toggle').run('open')));
+					},
 					toggle: function(trg) {
 						if (trg.classList.contains('dropdown')) {
-							if (trg.classList.contains('open')) {
-								trg.classList.remove('open');
-							}else {
-								trg.classList.add('open');
-							}
+							this.io().raf(trg);
 						}
 					},
 					click: function(evt) {
@@ -48,19 +47,24 @@ define(function() {
 							if (cls) cls.classList.remove('open');
 						}
 					},
+					enter: function(evt) {
+						var trg = evt.currentTarget;
+						if (trg && !trg.matches('.dropdown.open')) {
+							this.toggle(trg);
+						}
+					},
 					leave: function(evt) {
 						if (evt.target && evt.currentTarget) {
 							var tid = evt.target.closest('ul');
-							var nid = this.call('view.fn.store.fn.nid');
+							var nid = this.call('view.fn.parent.fn.nid');
 							var trg = evt.target.closest('li.dropdown.open');
-							if (trg && tid && tid.id.slice(1) === nid) {
+							if (trg && tid && tid.id === nid) {
 								if (!evt.relatedTarget || evt.relatedTarget.localName != 'a'
 									|| evt.relatedTarget.closest('ul') != tid) {
-									trg.classList.remove('open');
+									this.io().raf(trg);
 								}
 							}
 						}
-						evt.stop = true;
 					}
 				}
 			},
@@ -75,13 +79,13 @@ define(function() {
 
 			},
 			events: {
-
 				data: {
 					'change:data.main.%': 'main'
 				},
 				dom: {
-					'mouseout:ul.toggle ul.dropdown-menu li': 'data.control.main.leave',
-					'click:li': 'data.control.main.click'
+					'click:li': 'data.control.main.click',
+					//'mouseover:li.dropdown': 'data.control.main.enter',
+					'mouseout:ul.toggle ul.dropdown-menu li': 'data.control.main.leave'
 				}
 			}
 		};

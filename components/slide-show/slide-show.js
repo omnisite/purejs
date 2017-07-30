@@ -26,8 +26,8 @@ define(function() {
 				create: function() {
 					var state = this.state('slides') || this.state('slides',
 						{ curr: 0, prev: 0, next: 0 });
-					this.createButtons();
 					this.renderBody('carousel', {});
+					this.createButtons();
 
 					var view = this.view();
 					var find = view.parent('$fn.find');
@@ -67,7 +67,11 @@ define(function() {
 							return a.map(f);
 						}).run(items.map(function(attrs) {
 							return tmpl.run(attrs);
-						}));
+						})).map(function(i) {
+							return i.chain(function(e) {
+								return e.querySelector('img');
+							});
+						}).pure();
 					},
 
 					createButtons: function() {
@@ -78,7 +82,9 @@ define(function() {
 					},
 
 					createSlides: function(slides) {
-						return this.createItems('data.tmpl.carousel', 'slide-img', slides);
+						return this.createItems('data.tmpl.carousel', 'slide-img', slides)(function(x) {
+							Holder.run({ images: x });
+						});
 					}
 
 				},

@@ -271,7 +271,7 @@ define(function() {
 			}
 
 			tokenloop: for (var token in grammar) {
-				if(!grammar.hasOwnProperty(token) || !grammar[token]) {
+				if(!grammar.hasOwnProperty(token) || !grammar[token] || grammar[token] instanceof Function) {
 					continue;
 				}
 

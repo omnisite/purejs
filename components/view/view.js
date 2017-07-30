@@ -62,7 +62,7 @@ define(function() {
 
 					return this.of(unit).lift(function(r, v) {
 						return v.el.fx(function(t, a) {
-							r.result = r.render.run(t).run(a);
+							if (!r.result) r.result = r.render.run(t).run(a);
 							return r;
 						});
 					}).run({ attach: attach, render: render });
@@ -194,6 +194,13 @@ define(function() {
 					parent.state(key, value);
 					return parent;
 				},
+				queue: function(path) {
+					return this._dom.getQueue('dom').lift(function(dom, node) {
+						return dom.lookup(node.nid()).chain(function(node) {
+							return node.store();
+						});
+					}).ap(path ? this.parent().module().lookup(path) : this.parent().maybe());
+				},
 				update: function(opts) {
 					opts || (opts = {});
 					this.$super.call(this.parent('view', this), opts);
@@ -212,7 +219,7 @@ define(function() {
 						});
 					}).run(this.parent('$fn.find'));
 
-					this.style();
+					if (this.parent().deps) this.style();
 				},
 				elms: function(effect, selector) {
 					return this._elms.run(effect, selector);
@@ -221,7 +228,7 @@ define(function() {
 					return { view: this, el: el || this._el, cache: cache !== false };
 				},
 				read: function(el, cache) {
-					return this.reader.run(this.ctx(el, cache));
+					return (this._read || (this._read = this.reader.run(this.ctx(el, cache))));
 				},
 				item: function(el) {
 					return (function(view, item) {
@@ -264,7 +271,7 @@ define(function() {
 				},
 
 				attr: function() {
-					return this.get('attr') || this.set('attr', sys.get('utils.extend')({ id: 'v' + this.uid() }, this.tmpl('attr')));
+					return this.get('attr') || this.set('attr', sys.get('utils.extend')({ id: this.parent().nid() }, this.tmpl('attr')));
 				},
 
 				style: function(name) {
@@ -272,7 +279,9 @@ define(function() {
 						return t.bind(function(name) {
 							return v.eff('style').run(v.render(name).run({}));
 						}).run();
-					}).ap(this.maybe(this.parent().deps('templates')).map(function(tmpls) {
+					}).ap(this.maybe().map(function(view) {
+						return view.parent().deps('templates');
+					}).map(function(tmpls) {
 						return tmpls.bind(function(o, v, k) {
 							if (v && v.isStore) {
 	                            var keys = sys.get('link.idx.valueMap').run('scripts', 'style.' + k, true);
@@ -336,6 +345,21 @@ define(function() {
 					return this._evts;
 				},
 
+				module: function() {
+					return this.parent().module();
+				},
+
+				closest: function(selector) {
+					return (this._closest || (this._closest = this.lift(function(view, selector) {
+						return view._el.map(function(elem) {
+							if (elem.matches(selector)) return view;
+							var el = elem.closest(selector), st;
+							if (el) st = sys.find(el.id.replace(/[^0-9]/g, ''));
+							if (st) return st.ref().view();
+						}).run();
+					}))).run(selector);
+				},
+
 				dbpt: function() {
 					if (!this._dbpt) {
 						this._dbpt = this.parent('$fn.find').toMaybe().map(function(x) {
@@ -349,10 +373,32 @@ define(function() {
 
 				binding: function(evt) {
 					if (evt.src == 'data' && evt.action !== 'remove') {
-						var path = evt.ref.split('.').slice(this.level()).join('.');
-						this.parent(path).set(evt.target, evt.value);
-						this.dbpt().run('[data-bind-path="' + path + '"]').ap(this.evts().run(evt)).run();
+						if (this.is(evt.value)) {
+
+						}else {
+							var path = evt.ref.split('.').slice(this.level()).join('.');
+							this.parent(path).set(evt.target, evt.value);
+							this.dbpt().run('[data-bind-path]').ap(this.evts().run(evt)).run();
+						}
 					}
+				},
+
+				click: function(evt, hndl) {
+					var data = evt.currentTarget.getAttribute('data-click'), path, func;
+					if (data) {
+						path = data.split('.');
+						func = path.pop();
+						return this.parent().lookup(path).chain(function(base) {
+							return base[func].call(base, evt, hndl);
+						});
+					}
+				},
+
+				dispatch: function(type, elem) {
+					var evt = document.createEvent('HTMLEvents');
+					evt.initEvent(type, true, true);
+					elem.dispatchEvent(evt);
+					return evt;
 				},
 
 				append: function(tag, attrs, selector) {
@@ -360,7 +406,9 @@ define(function() {
 				},
 
 				render: function(type) {
-					return this.maybe(this.type()).map(function(t) {
+					return this.maybe().map(function(view) {
+						return view.type();
+					}).map(function(t) {
 						return t.get(type);
 					}).lift(this.doT).ap(this.lookup('attr').orElse({})).lift(function(tmpl, data) {
 						return tmpl(data && data['$key'] ? data[data['$key']] : (data || {}));

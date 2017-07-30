@@ -19,30 +19,63 @@ define(function() {
 		return {
 
 			ext: {
+				initialize: function() {
+					return this.control('main').init().run(function(x) {
+						(x instanceof Array ? x : [ x ]).map(function(comp) {
+							var at = comp.attach(comp.parent().$el('#'+comp.cid()));
+							comp.render();
+							return at;
+						});
+					});
+				},
 				hide: function() {
 					this.$fn('display').run('none');
 				}
 			},
 			control: {
 				main: {
-					fields: function(path, data) {
+					lift: function() {
+						return this.klass('io').of(this.root()).lift(function(form, elem) {
+							var mod = form.module();
+							var rel = form.relative(form.module()).append(elem.id);
+							return mod.component(rel.join('.'), elem.getAttribute('data-klass')).pure();
+						});
+					},
+					init: function() {
+						return (this._init || (this._init = this.root().view().elms(this.lift(), 'div')('[data-klass]'))).run();
+					},
+					fields: function(data, path) {
 
 						var form = this.root();
 						var view = form.view();
-						var bind = view.parent('$fn.attrs').run({ 'data-bind-path' : path });
 						var rndr = view.parent('$fn.render');
+						var attr = view.eff('attrs');
+						
+						if (path) view.parent('$fn.attrs').run({ 'data-bind-path' : form.state('path', path) });
 
-						this.of(data).reduce(function(v, k) {
+						this.of(data).reduce(function(t, k) {
 
+							var v = t.elem;
 							v.id = k;
+
 							if (v.data) {
-								var d = v.data.split(':'), o;
+								var d = v.data.split(':'), o, x;
 								if (d.length > 1) {
 									o = d.shift();
-									v[o] = sys.get(d.join('.'));
+									x = sys.get('utils.fn')(sys.get(d.join('.')));
+									if (x) v[o] = x.map(function(t) {
+										return t.label || t.text || t.value || t;
+									});
 								}
 							}
-							return rndr.run(v.elem).run(v);
+							if (v.tag == 'component') {
+								v.path = path;
+							}else if (v.tag == 'select') {
+								v.empty = v.empty !== false;
+							}
+							return rndr.run(v.tag).run(v).map(function(elem) {
+								return v.attrs ? attr.ap(elem).pure().run(v.attrs) : elem;
+							});
 
 						}, data);
 
@@ -61,8 +94,12 @@ define(function() {
 						});
 					},
 					click: function(evt) {
-						if ((evt.currentTarget || (evt.currentTarget = evt.target)))
-							this.root().$proxy(evt, this.root().get('proxy', evt.type, evt.currentTarget.localName));
+						var view = this.root('view').closest('[data-bind-path]');
+						if (view) {
+							view.parent().lookup(view.get('attr.data-bind-path')).chain(function(node) {
+								return node.set('btn' + evt.value, evt.eid);
+							});
+						}
 					}
 				}
 			},

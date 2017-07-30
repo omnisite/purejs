@@ -18,17 +18,45 @@ define(function() {
 
 		}
 
-	}, function(deps) {
+	}, function() {
 
 		return {
-			ext: {
-				highlight: function() {
+			init: function(deps) {
+				return deps('core.pure')(function(sys) {
+					return function(comp) {
+						return comp.klass;
+					}
+				})(this);
+			},
+			klass: {
+				ext: {
+					highlight: function() {
 
+					},
+					render: function(val) {
+						var cf = this.control('main').init();
+						cf.update(val || '');
+					}
 				},
-				render: function(val) {
-					var el = this.$el().run();
-					var cf = this.deps('helpers.codeflask').make(el, { language: 'javascript', lineNumbers: true });
-					cf.update(val);
+				control: {
+					main: {
+						init: function() {
+							return (this._cf || (this._cf = this.root().$el().lift(function(el, rt) {
+								var flsk = rt.deps('helpers.codeflask').make(el, { language: 'javascript', lineNumbers: true });
+								var name = el.parentElement.id, path;
+								var prnt = rt.view().closest('[data-bind-path]').parent();
+								prnt.$el().map(function(el) {
+									var path = el.getAttribute('data-bind-path');
+									rt.observe(prnt, 'change', path.concat('.', name), 'data.control.main.change');
+								}).run();
+								flsk.textarea.setAttribute('data-bind-name', name);
+								return flsk;
+							}).run(this.root())));
+						},
+						change: function(evt) {
+							this.init().update(evt.value);
+						}
+					}
 				}
 			}
 		};

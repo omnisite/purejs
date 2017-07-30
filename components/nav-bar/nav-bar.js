@@ -63,9 +63,7 @@ define(function() {
 
 					return { 'class' : 'nav navbar-nav toggle' };
 				}
-
 			},
-
 			events: {
 				dom: {
 					'click:.navbar-toggle': 'toggle'
