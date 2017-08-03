@@ -52,6 +52,7 @@
                     this._cache       = {};
                 };
                 Instruction.prototype.constructor = Instruction;
+                Instruction.prototype.type = 'Instruction';
                 Instruction.prototype.init = function(method, result, type) {
                     var i = this._instruction;
                     var t = type || i.type || result || i.node.parent('type');
@@ -59,8 +60,15 @@
                     var p = a.join('.');
                     return this._cache[p] || !a.unshift(i.node) || (this._cache[p] = this._handler.init.apply(this._handler, a));
                 };
+                Instruction.prototype.of = function(method, result, type) {
+                    return this.init(method, result, type);
+                };
                 Instruction.prototype.show = function() {
                     return this._instruction;
+                };
+                Instruction.prototype.get = function(key) {
+                    if (key == 'type') return this._handler.eff;
+                    return this._instruction.node.parent(key);
                 };
                 Instruction.prototype.map = function() {
                     var args = Array.prototype.slice.call(arguments);
@@ -124,6 +132,29 @@
                         return runInit(type, node.get(action), result);
                     }).unit();
                 };
+                Handler.prototype.eff = this.klass('io').parse({
+                    klass: function EffIO(x) {
+                        this.$super(x);
+                    },
+                    $$init: function(eff) {
+                        return function(x) {
+                            this.unsafePerformIO = eff(x());
+                        }
+                    },
+                    eff: function(x) {
+                        return function() {
+                            var eff = sys.get(x);
+                            return eff.run.apply(eff, [].slice.call(arguments));
+                        }
+                    },
+                    init: function(type, klass, sys) {
+                        var io = klass.find('io').proto();
+                        klass.prop('$$init', type.$$init(type.eff));;
+                        klass.prop('fx', io.fx.bind(io));
+                        klass.prop('of', io.fx.bind(io));
+                    }
+
+                });
                 Handler.of = function(env) {
                     return new Handler(env);
                 };
@@ -601,7 +632,7 @@
                             }),
                             (function find(base) {
                                 return base.curry(function(elem, selector) {
-                                    return elem.matches(selector) ? elem : elem.querySelector(selector);
+                                    return selector instanceof Element ? selector : (elem.matches(selector) ? elem : elem.querySelector(selector));
                                 });
                             }),
                             (function toggle(make, wrap) {
@@ -1013,7 +1044,7 @@
                                         unit: this.run().fn.$const(unit),
                                         request: this.klass('Cont').extend(
                                             function RequestCont(mv, mf) {
-                                                this.$super.call(this, mv, mf);
+                                                this.$super(mv, mf);
                                             }, {
                                                 mf: function(loc) {
                                                     return sys.get('async.request')(loc);
@@ -1026,7 +1057,7 @@
                                         ).$ctor,
                                         loader: this.klass('Cont').extend(
                                             function ComponentCont(mv, mf) {
-                                                this.$super.call(this, mv, mf);
+                                                this.$super(mv, mf);
                                             }, {
                                                 mf: function mf(tag) {
                                                     return function $_pure(k) {

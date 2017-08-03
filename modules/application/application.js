@@ -96,7 +96,7 @@ define(function() {
 
 							n.item({ id: 'app', name: 'Home' });
 							n.item({ id: 'find', name: 'Find' });
-							n.menu({ id: 'options', name: 'Options' }).run(function(opts) {
+							n.menu({ id: 'options', name: 'Options' }).chain(function(opts) {
 								opts.item({ id: 'animation', name: 'Animation' });
 								opts.item({ id: 'effects',   name: 'Effects'   });
 								n.item({ id: 'types', name: 'Types' });
@@ -104,6 +104,10 @@ define(function() {
 								n.on('click', '[data-id="play"]', module.play.bind(module));
 								n.item({ id: 'info', glyph: 'glyphicon-info-sign', 'class': 'pull-right', href: 'Javascript:' });
 								n.on('click', '[data-id="info"]', module.info.bind(module));
+								return opts.menu({ id: 'test', name: 'Test', submenu: true }).pure();
+							}).run(function(test) {
+								test.item({ id: 'test1', name: 'Test1' });
+								test.item({ id: 'test2', name: 'Test2' });
 							});
 
 							a.control('main').run();

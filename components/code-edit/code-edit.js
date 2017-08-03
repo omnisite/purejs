@@ -43,12 +43,14 @@ define(function() {
 						init: function() {
 							return (this._cf || (this._cf = this.root().$el().lift(function(el, rt) {
 								var flsk = rt.deps('helpers.codeflask').make(el, { language: 'javascript', lineNumbers: true });
-								var name = el.parentElement.id, path;
-								var prnt = rt.view().closest('[data-bind-path]').parent();
-								prnt.$el().map(function(el) {
-									var path = el.getAttribute('data-bind-path');
-									rt.observe(prnt, 'change', path.concat('.', name), 'data.control.main.change');
-								}).run();
+								var name = el.parentElement.id;
+								var ext  = el.closest('[data-bind-ext]');
+								var full = ext ? [ ext.getAttribute('data-bind-ext'), name ] : [ name ];
+								var view = rt.view().closest('[data-bind-path]');
+								view.parent().lift(function(parent, path) {
+									full.unshift(path);
+									rt.observe(parent, 'change', full.join('.'), 'data.control.main.change');
+								}).ap(view.bindpath());
 								flsk.textarea.setAttribute('data-bind-name', name);
 								return flsk;
 							}).run(this.root())));

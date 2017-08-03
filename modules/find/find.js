@@ -28,7 +28,7 @@ define(function() {
 						return [ table.pure(), form.pure() ].lift(function(t, f) {
 
 							app.deps('components').table = t.control('main').render(app.table);
-							app.deps('components').form  = f.control('main').fields(app.fields, 'data.main');
+							app.deps('components').form  = f.fields(app.fields, 'data.main', true);
 
 							return app;
 

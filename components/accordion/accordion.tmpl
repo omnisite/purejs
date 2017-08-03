@@ -11,7 +11,7 @@
 			{{?}}
 		</h4>
 	</div>
-	<div id="{{=it.id}}" data-path="{{=it.path}}" class="panel-collapse collapse">
+	<div{{? it.noid }}{{??}} data-id="{{=it.id}}"{{?}}{{? it.path }} data-path="{{=it.path}}"{{?}} class="panel-collapse collapse">
 		<div class="panel-body">
 			<table class="table">
 				<tbody>

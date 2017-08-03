@@ -56,11 +56,6 @@ define(function() {
 							data.emit('change', evt.target, 'update', evt.value);
 						}
 					},
-					add: function(evt) {
-						var pan = evt.currentTarget.closest('.panel');
-						var trg = pan.querySelector('[data-path]');
-						return this.root().emit('change', 'data.current.add', 'update', trg.getAttribute('data-path'));
-					},
 					panel: function(name) {
 						return this.root().get('data.main', name);
 					},
@@ -74,27 +69,35 @@ define(function() {
 					data: function(name) {
 						return this.items.get(name)||this.items.get('base')||unit;
 					},
-					change: function(evt) {
-						var name = evt.ref.split('.').at(1);
+					action: function(action, ref, target, evt) {
+						var name = ref.split('.').at(1);
 						var info = this.panel(name);
 						if (!info.done) {
 							// Pane not loaded - no need to refresh anything //
-						}else if (evt.action == 'remove') {
-							return info.$find.toMaybe().run('[data-key="'+evt.target+'"]').chain(function(elem) {
+						}else if (action == 'remove') {
+							return info.$find.toMaybe().run('[data-key="'+target+'"]').chain(function(elem) {
 								return elem.parentElement.removeChild(elem);
 							});
-						}else if (evt.action == 'create') {
-							return this.data(name).call(this, evt, evt.target).ap(info.$add).run();
-						}else if (evt.action == 'update') {
-							return info.$find.ap('[data-path="'.concat(evt.ref, '"]')).lift(function(tr, rndr) {
+						}else if (action == 'create') {
+							return info.$find.run('[data-path="'.concat(ref, '"]'))
+							|| this.data(name).call(this, evt, target).ap(info.$add).run(this.bin(function(main, item) {
+								return item.chain(function(tr) {
+									return main.item(tr);
+								});
+							}));
+						}else if (action == 'update') {
+							return info.$find.ap('[data-path="'.concat(ref, '"]')).lift(function(tr, rndr) {
 								return rndr.run(function($$tr) {
 									return $$tr.chain(function($tr) {
 										tr.removeChild(tr.firstElementChild);
 										tr.appendChild($tr.firstElementChild);
 									});
 								});
-							}).run(this.data(name).call(this, evt, evt.target).ap(this.root('view').tmpl('item')));
+							}).run(this.data(name).call(this, evt, target).ap(this.root('view').tmpl('item')));
 						}
+					},
+					change: function(evt) {
+						return this.action(evt.action, evt.ref, evt.target, evt);
 					},
 					toggle: function(elem) {
 						var info = this.panel(elem.getAttribute('data-path'));
@@ -112,13 +115,19 @@ define(function() {
 						}
 						return this.root();
 					},
-					show: function(evt) {
-						var trg = evt.currentTarget;
+					item: function(trg) {
 						var key = trg.getAttribute('data-key');
 						var res = trg.closest("[data-path]");
-						if (res) res = res.getAttribute('id') || res.getAttribute('data-id');
-						if (res) res = sys.find(res);
-						if (res && key) this.root().set('data.current.item', res.uid() + '.' + key);
+						var uid = res.getAttribute('id') || res.getAttribute('data-id');
+						if (uid) {
+							res = sys.find(uid);
+							if (res && key) this.root().set('data.current.item', res.uid() + '.' + key);
+						}else if (key) {
+							this.root().set('data.current.item', key);
+						}
+					},
+					show: function(evt) {
+						this.item(evt.currentTarget);
 					},
 					click: function(evt) {
 						var trg = evt.currentTarget.nextElementSibling;

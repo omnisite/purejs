@@ -233,9 +233,11 @@ define(function() {
 				item: function(el) {
 					return (function(view, item) {
 						item.replace = view.eff('append').ap(item.empty).pure();
-						item.render  = item.append.nest().lift(function(append, type) {
-							return append.ap(view.tmpl('item', type));
-						});
+						item.render  = view.eff('append').ap(item.find).nest().lift(function(append, view) {
+							return this.fx(function(type, selector) {
+								return append.ap(selector || '*').pure().ap(view.tmpl('item', type));
+							});
+						}).run(view);
 						return item;
 					})(this, {
 						el:      el,
@@ -329,12 +331,13 @@ define(function() {
 					if (!this._evts) {
 						this._evts = this.klass('io').pure(function(attr) {
 							return this.fx(function(evt) {
+								var target = evt.target.split('.').pop();
 								return this.fx(function(elm) {
-									if (elm.getAttribute('data-bind-name') == evt.target && (evt.elem = elm)) {
+									if (elm.getAttribute('data-bind-name') == target && (evt.elem = elm)) {
 										attr.run(evt.elem)('value', evt.value);
-									}else if ((evt.elem = elm.querySelector('#'+evt.target))) {
+									}else if ((evt.elem = elm.querySelector('#'+target))) {
 										attr.run(evt.elem)('value', evt.value);
-									}else if ((evt.elem = elm.querySelector('[data-bind-name="'+evt.target+'"]'))) {
+									}else if ((evt.elem = elm.querySelector('[data-bind-name="'+target+'"]'))) {
 										attr.run(evt.elem)('value', evt.value);
 									}
 									return elm;
@@ -355,7 +358,7 @@ define(function() {
 							if (elem.matches(selector)) return view;
 							var el = elem.closest(selector), st;
 							if (el) st = sys.find(el.id.replace(/[^0-9]/g, ''));
-							if (st) return st.ref().view();
+							if (st) return st.view();
 						}).run();
 					}))).run(selector);
 				},
@@ -371,14 +374,25 @@ define(function() {
 					return this._dbpt;
 				},
 
+				bindpath: function() {
+					return this.$el('[data-bind-path]').map(function(el) {
+						return el.getAttribute('data-bind-path');
+					});
+				},
+
 				binding: function(evt) {
 					if (evt.src == 'data' && evt.action !== 'remove') {
-						if (this.is(evt.value)) {
-
-						}else {
-							var path = evt.ref.split('.').slice(this.level()).join('.');
-							this.parent(path).set(evt.target, evt.value);
-							this.dbpt().run('[data-bind-path]').ap(this.evts().run(evt)).run();
+						if (!this.is(evt.value) && typeof evt.value != 'object') {
+							var rel = this.parent().lift(function(parent, path) {
+								return parent.get(path).level();
+							}).ap(this.bindpath()).chain(function(level) {
+								return evt.level - level;
+							});
+							if (rel) {
+								return this.evts().run(evt).ap(this.$el('[data-bind-ext="' + evt.ref.split('.').slice(-rel).join('.') + '"] [data-bind-name="' + evt.target + '"]'));
+							}else {
+								return this.evts().run(evt).ap(this.$el('[data-bind-name="' + evt.target + '"]'));
+							}
 						}
 					}
 				},

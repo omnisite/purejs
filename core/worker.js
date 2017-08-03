@@ -73,7 +73,7 @@
 	        	}),
 	            (function _runAsync(id, request) {
 	                var that = this;
-	                return function(succ, fail) {
+	                return function $_pure(succ, fail) {
 	                    that.once(id, function(data) {
 	                        succ(data.result);
 	                    });

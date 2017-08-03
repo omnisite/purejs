@@ -499,8 +499,12 @@
                         (function isBase(v) {
                             return (v || (v = this)).constructor === Function;
                         }),
-                        (function map(f) {
-                            return this.keys().map(f);
+                        (function map(f, r) {
+                            return this.keys().reduce(function(r, k, i) {
+                                if (r.arr) r.res.push(f(r.obj[k], k, i, r.obj));
+                                else r.res = f(r.res, r.obj[k], k, i, r.obj);
+                                return r;
+                            }, { res: r || [], arr: !r || r instanceof Array, obj: this }).res;
                         }),
                         (function keys() {
                             return Object.keys(this).filter(function(v, i, o) {
@@ -546,7 +550,7 @@
                         }),
                         (function reduce(f, v, u) {
                             return this.keys.call(v).reduce(function(r, k, i, o) {
-                                var x = f(v[k], k, i, o);
+                                var x = f(v[k], k, i, r);
                                 if (r[k] && r.is(r[k])) {
                                     r[k].extend(x, u);
                                 }else if (u && r[k]) {
@@ -668,6 +672,9 @@
                         }),
                         (function ifSome(mf) {
                             return this.isNothing() || !mf || !(mf instanceof Function) ? null : mf.call(this, this._x);
+                        }),
+                        (function ifNone(mf) {
+                            return !this.isNothing() || !mf || !(mf instanceof Function) ? null : mf.call(this, this._x);
                         }),
                         (function filter(f) {
                             return this.map(function(v) {
@@ -1288,8 +1295,8 @@
             (function() {
                 return {
                     parent: 'Store',
-                    klass: function Link(ref, name) {
-                        this.$super.call(this, ref, name || 'link');
+                    klass: function Link(x, name) {
+                        this.$super.call(this, x, name || 'link');
                     },
                     ext: [
                         (function cid() {
@@ -1501,28 +1508,56 @@
                     }
                 };
             }),
+        // === Record === //
+            (function() {
+                return {
+                    parent: 'Node',
+                    klass: function Record(opts) {
+                        this.$super(opts);
+                    },
+                    ext: [
+                        { name: '_children', value: 'nodes' }
+                    ]
+                };
+            }),
         // === Schema === //
             (function() {
                 return {
                     parent: 'Node',
                     klass: function Schema(opts) {
                         this.$super(opts);
-                        this.node('fields');
-                        this.node('funcs');
                         this.configure(opts);
                     },
                     ext: [
+
                     ],
                     conf: {
                         control: {
                             main: {
-                                add: function(values) {
-                                    var root = this.root();
-                                    var vals = values || {};
-                                    var node = root.get('fields').reduce(function(r, v, k, n) {
-                                        r[k] = vals[k] || (k == 'cid' ? root.id() : (v.get('defv') || ''));
-                                        return r;
-                                    }, {});
+                                add: function(type, values) {
+                                    var root = this.root(), node = {}, def = values === true, vals = typeof values == 'object' ? values : {};
+                                    node = root.get(type).lookup('fields').chain(function(fields) {
+                                        return fields.reduce(function(r, v, k, n) {
+                                            if (def) {
+                                                r[k] = v.values(1);
+                                            }else {
+                                                r[k] = vals[k] || (k == 'cid' ? root.id() : (v.get('defv') || ''));
+                                            }
+                                            return r;
+                                        }, node);
+                                    }) || node;
+                                    node = root.get(type).lookup('nodes').chain(function(nodes) {
+                                        return nodes.reduce(function(r, v, k, n) {
+                                            if (def) {
+                                                r[k] = root.control('main').add(k, true);
+                                            }else {
+                                                r[k] = (vals[k] || (vals[k] = [])).map(function(x) {
+                                                    return root.control('main').add(k, x);
+                                                });
+                                            }
+                                            return r;
+                                        }, node);
+                                    }) || node;
                                     return node;
                                 }
                             }
@@ -1554,13 +1589,26 @@
                             return new this(ref, name);
                         })
                     ],
+                    parse: function(obj, parse) {
+                        return function(values) {
+                            return obj.of({ root: this, curr: this }).reduce(function(v, k, i, r) {
+                                if (k == 'fields' || k == 'nodes') {
+                                    return parse.call(r.root.child({ name: k, parent: r.curr }), v, 1, r.root.__);
+                                }else {
+                                    return parse.call(r.root.child({ name: k, parent: r.curr }), v, 2, r.root.__);
+                                }
+                            }, values);
+                        }
+                    },
                     init: function(type, klass, sys) {
                         var $store = klass.$store.ctor;
                         var schema = sys.root.child('schema', klass.$ctor);
+                        klass.prop('$record', klass.find('Record').$ctor);
                         klass.prop('$type', schema.node('$type').parse(type.type));
                         klass.prop('$field', schema.node('$field').parse(type.field));
                         klass.prop('$node', schema.node('$node').parse(type.node));
                         klass.prop('conf', sys.get('utils.extend')(klass.prop('conf').clone(), type.conf));
+                        klass.prop('parse', type.parse(sys.klass('Obj'), klass.prop('parse')));
                     }
                 };
             }),
@@ -2565,23 +2613,25 @@
                                 return signal;
                             }
                         }),
-                        (function makeEvent(value) {
+                        (function makeEvent(source, args, base) {
+                            var type   = args.shift();
+                            var target = args.shift().split('.');
                             return {
                                 src:    'data',
-                                count:   value.count || 0,
-                                uid:     value.source.uid(),
-                                ref:     value.source.identifier(),
-                                level:   value.source.level(),
-                                type:    value.args.shift(),
-                                target:  value.args.shift(), 
-                                action:  value.args.shift(),
-                                value:   value.args.pop()
+                                count:   0,
+                                uid:     source.uid(),
+                                level:   source.level(),
+                                type:    type,
+                                target:  target.pop(), 
+                                ref:     target.unshift(source.identifier()) && target.join('.'),
+                                action:  args.shift(),
+                                value:   args.pop()
                             };
                         }),
-                        (function emit(source, args) {//* source, name, target, info */) {
+                        (function emit(source, args, base) {//* source, name, target, info */) {
                             if (args !== 'queue' && source && source.uid && this._active) {
                                 if (this._active.length) {
-                                    this.thread.push(this.makeEvent({ count: 0, source: source, args: args }));
+                                    this.thread.push(this.makeEvent(source, args, base));
                                 }else {
                                     //console.log(this, arguments)
                                 }
@@ -2596,13 +2646,14 @@
                     free: function() {
                         return this.find('Free').$ctor.queue(this.find('Coyoneda').of(function(handlers) {
                             return function(values) {
+                                var item = values.shift();
                                 sys.find(handlers, true).get('listeners.active').map(function(hndl) {
-                                    if (values[0].ref.indexOf(hndl.ref) === 0) {
-                                        hndl.run(values[0]);
+                                    if (item.ref.indexOf(hndl.ref) === 0) {
+                                        hndl.eid = item.eid; hndl.run(item);
                                     }
-                                    values[0].count++;
+                                    item.count++;
                                 });
-                                return values.shift() && values.length ? this.cont() : this.done();
+                                return values.length ? this.cont() : this.done();
                             }
                         }));
                     },
@@ -3015,20 +3066,13 @@
                             })));
                             return this;
                         }),
-                        (function cont() {
-                            var cell = this._cell;
-                            if (!cell) {
-                                cell = this._cell = this.cell();
-                            }
-                            return cell.kont();
-                        }),
                         (function component() {
                             var args = [].slice.call(arguments);
                             var ref  = args.shift().split('.');
                             var type = args.length ? args.join('.') : '';
                             var path = type ? type.split('.') : ref.split('.');
                             var name = ref.pop();
-                            var prnt = ref.length ? this.get(ref) : this;
+                            var prnt = ref.length ? this.ensure(ref) : this;
                             var comp = prnt.get(name);
                             if (!comp) {
                                 var cmps = this.deps(path.length > 1 ? path.shift() : 'components');
@@ -3073,6 +3117,13 @@
                                 else cell.set(this);
                             }
                             return this;
+                        }),
+                        (function cont() {
+                            var cell = this._cell;
+                            if (!cell) {
+                                cell = this._cell = this.cell();
+                            }
+                            return cell.kont();
                         }),
                         (function once(k) {
                             var cell = this._cell;

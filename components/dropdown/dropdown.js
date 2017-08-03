@@ -31,11 +31,19 @@ define(function() {
 			control: {
 				main: {
 					io: function() {
-						return (this._toggle || (this._toggle = this.root('view.fn.eff.toggle').run('open')));
+						return (this._toggle || (this._toggle = this.root('view.fn.eff.toggle').run('open').nest().lift(function(toggle, $el) {
+							return this.fx(function(trg) {
+								return $el.map(function(elem) {
+									if (elem.id == trg.closest('ul').id) {
+										toggle.raf(trg);
+									}
+								}).run();
+							});
+						}).run(this.root().$el())));
 					},
 					toggle: function(trg) {
 						if (trg.classList.contains('dropdown')) {
-							this.io().raf(trg);
+							this.io().run(trg);
 						}
 					},
 					click: function(evt) {
@@ -54,15 +62,12 @@ define(function() {
 						}
 					},
 					leave: function(evt) {
-						if (evt.target && evt.currentTarget) {
+						if (evt.target && evt.currentTarget && !evt.currentTarget.matches('.open.dropdown-submenu')) {
 							var tid = evt.target.closest('ul');
-							var nid = this.call('view.fn.parent.fn.nid');
 							var trg = evt.target.closest('li.dropdown.open');
-							if (trg && tid && tid.id === nid) {
-								if (!evt.relatedTarget || evt.relatedTarget.localName != 'a'
-									|| evt.relatedTarget.closest('ul') != tid) {
-									this.io().raf(trg);
-								}
+							if (trg && (!evt.relatedTarget || evt.relatedTarget.localName != 'a'
+								|| evt.relatedTarget.closest('ul') != tid)) {
+								this.io().run(trg);
 							}
 						}
 					}
@@ -84,7 +89,7 @@ define(function() {
 				},
 				dom: {
 					'click:li': 'data.control.main.click',
-					//'mouseover:li.dropdown': 'data.control.main.enter',
+					'mouseover:li.dropdown': 'data.control.main.enter',
 					'mouseout:ul.toggle ul.dropdown-menu li': 'data.control.main.leave'
 				}
 			}

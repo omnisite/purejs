@@ -1,7 +1,7 @@
 <script id="input" type="text/template">
     <div class="form-group{{? it.class }} {{=it.class}}{{?}}">
-        <label for="{{=it.id}}">{{=it.label}}</label>
-        <input id="{{=it.id}}" data-bind-name="{{=it.id}}" type="{{=it.type}}" class="form-control" placeholder="{{=it.placeholder}}">
+        <label>{{=it.label}}</label>
+        <input data-bind-name="{{=it.id}}" type="{{=it.type}}" class="form-control" placeholder="{{=it.placeholder}}">
     </div>
 </script>
 <script id="textarea" type="text/template">
@@ -13,8 +13,8 @@
 </script>
 <script id="select" type="text/template">
     <div class="form-group{{? it.class }} {{=it.class}}{{?}}">
-        <label for="{{=it.id}}">{{=it.label}}</label>
-        <select id="{{=it.id}}" data-bind-name="{{=it.id}}" class="form-control"{{? it.data }} data-source="{{=it.data}}"{{?}}>
+        <label>{{=it.label}}</label>
+        <select data-bind-name="{{=it.id}}" class="form-control"{{? it.data }} data-source="{{=it.data}}"{{?}}>
             {{? it.empty }}<option>-</option>{{?}}
             {{~it.options :value:index}}
             <option>{{=value}}</option>
@@ -34,6 +34,10 @@
     <div class="form-group">
         <label for="{{=it.id}}">{{=it.label}}</label>
         <div id="{{=it.id}}" class="{{? it.class }}{{=it.class}}{{??}}{{=it.klass}}{{?}}" data-klass="{{=it.klass}}"{{? it.path }} data-path="{{=it.path}}"{{=it.path}}{{?}}></div>
+    </div>
+</script>
+<script id="list" type="text/template">
+    <div class="form-list" data-bind-ext="{{=it.path}}">
     </div>
 </script>
 <script id="style" type="text/template">

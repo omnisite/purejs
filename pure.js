@@ -195,6 +195,9 @@
                     String.prototype.toDash = function() {
                         return this.length < 2 ? this.toLowerCase() : this.replace(/\s+/g, '').replace(/([A-Z][^A-Z])/g, function($1, p1, pos){return (pos > 0 ? "-" : "") + $1.toLowerCase();});
                     };
+                    String.prototype.quote = function() {
+                        return [ '\'', this || '', '\'' ].join('');
+                    };
                     String.prototype.toTypeCode = function() {
                         return [ '$', this.split('$').pop().toDash() ].join('').toLowerCase();
                     };
@@ -956,11 +959,26 @@
                                 return key ? (store.get(key)||(orElse && orElse instanceof Function ? orElse(store) : orElse)) : orElse;
                             });
                         }),
-                        (function values(recur) {
+                        (function children() {
+                            return this._ref && !(this._ref instanceof this.__) ? this._ref._children : '';
+                        }),
+                        (function values(recur, children) {
                             var node = this;
-                            return node._val.reduce(function(result, value, index) {
-                                result[node._ids[index]] = recur && node.is(value)
-                                    ? value.values(typeof recur == 'number' ? (recur - 1) : recur) : value;
+                            return node._val.reduce(function $reduce(result, value, index) {
+                                var key = node._ids[index];
+                                if (node.is(value)) {
+                                    if (!children && node.children() == key) {
+                                        value.reduce(function(r, v, k, i) {
+                                            if (node.is(v)) r[k] = v.values(recur);
+                                            else r[k] = v;
+                                            return r;
+                                        }, result);
+                                    }else {
+                                        result[key] = recur ? value.values(typeof recur == 'number' ? (recur - 1) : recur) : value;
+                                    }
+                                }else {
+                                    result[key] = value;
+                                }
                                 return result;
                             }, {});
                         }),
@@ -973,6 +991,12 @@
                                 arr.push(f(v,store._ids[i],i,store));
                             });
                             return arr;
+                        }),
+                        (function reduce(f, r) {
+                            return this._ids.reduce(function(r, k, i) {
+                                r.res = f(r.res, r.node.get(k), k, r.node);
+                                return r;
+                            }, { res: r, node: this }).res;
                         }),
                         (function $bind(b) {
                             return function bind(f, r) {
@@ -1158,10 +1182,10 @@
                             utils.set('curry', sys.fn.curry);
                             utils.set('point', items.shift().call({ curry: sys.fn.curry }));
                             utils.set('get', items.shift()(utils.get('importFuncs')(items, utils).get('path')));
+                            utils.ctor.base.prototype.bin = utils.get('pass')(utils.get('bind'));
                             utils.ctor.mixin([
                                 { name: 'fn',     value: utils.get('func')   },
                                 { name: 'select', value: utils.get('pass')(utils.get('select')) },
-                                { name: 'bin',    value: utils.get('pass')(utils.get('bind')) },
                                 { name: 'parse',  value: utils.get('parse')  }
                             ], utils.constructor.prototype);
 
@@ -1357,7 +1381,7 @@
                             }else if (!idx && result instanceof Function) {
                                 result = null;
                             }else if (!idx && key == 'root' && result.isStore) {
-                                result = result;
+                                result = result.root || result;
                             }else if (value && (idx == keys.length - 1)) {
                                 result = result.set ? result.set(key, value) : (result[key] = value);
                             }else if (idx && (keys[idx-1] == 'fn' || keys[idx-1] == '$fn')  && result[key] instanceof Function) {
@@ -1368,9 +1392,9 @@
                                 result = result;
                             }else if (result.isStore) {
                                 if (key.substr(0, 1) == '%') key = result.get(key.slice(1));
-                                result = result.get(key) || (result.ref() && result.ref().get(key)) || (value ? result.child(key) : ((keys.length - idx) > 1 ? null : result[key]));
+                                result = result.get(key) || (result.ref() && result.ref().get(key)) || (value ? result.child(key) : ((keys.length - idx) > 1 || key.substr(0, 1) == '$' ? null : result[key]));
                             }else if (result instanceof Array) {
-                                result = result.get(key);
+                                result = result.at(parseInt(key || 0) || 0);
                             }else if (typeof result == 'object') {
                                 if (key == '$fn') key = 'fn';
                                 if (false && result && result.get) result = result.get(key) || result[key] || result[key.replace('-', '.')];
@@ -1532,19 +1556,19 @@
                     })(
                         (function set(run, node, key, value, recur, ctor) {
                             if (typeof value == 'object' && key != 'args') {
-                                if (value instanceof Array && key == node._children) {
-                                    var items = node.node(key);
-                                    value.map(function(v) {
-                                        return items.child(v, ctor || node.constructor);
+                                if (value instanceof Array && node._children) {
+                                    var trg = node.node(node._children).child(key, ctor);
+                                    value.map(function(v, i) {
+                                        trg.child(i+'').parse(v, recur);
                                     });
                                 }else if (node.is(value)) {
                                     node.set(value.cid(), value);                                   
                                 }else if (value.constructor != Object && value.constructor.name != 'Obj' && value instanceof sys.ctor.base) {
-                                    node.set(key.toKey(), value);
+                                    node.set(key, value);
                                 }else if (recur) {
-                                    run(node.child(key.toKey(), ctor), value, typeof recur == 'number' ? (recur - 1) : recur, ctor);
+                                    run(node.child(key, ctor), value, typeof recur == 'number' ? (recur - 1) : recur, ctor);
                                 }else {
-                                    node.set(key.toKey(), value);
+                                    node.set(key, value);
                                 }
                             }else if (typeof key == 'number' && value instanceof Array && value.length == 2 && typeof value[0] == 'string') {
                                 node.set(value[0], value[1]);
@@ -1556,7 +1580,8 @@
                             return function plain(node, data, recur, ctor) {
                                 var keyss = $_keys(data), valss = $_values(data), value, key;
                                 while (keyss.length) {
-                                    set(plain, node, keyss.shift(), valss.shift(), recur, ctor);
+                                    key = keyss.shift();
+                                    set(plain, node, typeof key == 'string' ? key.toKey() : key, valss.shift(), recur, ctor);
                                 }
                                 return node;
                             };
@@ -1572,7 +1597,7 @@
                         (function(plain, lazy) {
                             return function run(node, data, recur, ctor) {
                                 return typeof data == 'object' && data.constructor.name == 'Obj'
-                                    ? lazy(node, data, recur, ctor) : plain(node, data, recur, ctor);
+                                    ? lazy(node, data, recur, ctor === true ? node.__ : ctor) : plain(node, data, recur, ctor === true ? node.__ : ctor);
                             };
                         }),
                         (function(run) {
@@ -1777,8 +1802,12 @@
                                 }else {
                                     this._store = this._parent._store.add(this._cid, this);
                                 }
-                                if (this._parent._events && !this._events) {
-                                    this._events = this._parent._events;
+                                if (!this._events) {
+                                    if (opts.events) {
+                                        this._events = this._parent._events.child({ name: 'events', parent: this });
+                                    }else if (this._parent._events) {
+                                        this._events = this._parent._events;
+                                    }
                                 }
 
                                 this._level  = (this._parent._level  || (this._parent._level  = 0)) + 1;
@@ -1793,9 +1822,13 @@
                             if (this._children) this.node(this._children);
                         }),
                         (function connect() {
+                            var id = this.listener ? this.listener.id : '';
                             this.listener = this.parent().listener || this.listener;
+                            if (!this.dispatcher || id != this.listener.id) {
+                                this.dispatcher = this.listener.run(this);
+                            }
                             if (!this._events) this._events = this.parent()._events.child({ name: 'events', parent: this });
-                            if (!this.dispatcher) this.dispatcher = this.listener.run(this);
+
                             return this;
                         }),
                         (function children() {
@@ -1864,6 +1897,9 @@
                         (function acc(key, value) {
                             return value ? this.set(key, value) : this.get(key);
                         }),
+                        (function push(key, value, asArray) {
+                            return this._store.push(key, value, asArray);
+                        }),
                         (function remove(key) {
                             return this.has(key)
                                 ? (this.emit('change', key, 'remove', this.get(key))
@@ -1899,18 +1935,18 @@
                         (function pipe(source, args) {
                             if (!source._events || !source._events._active || !source._events._active.length) {
                             }else if (this._started > 1) {
-                                source._events.emit(source, args);
+                                source._events.emit(source, args, this);
                             }else {
-                                this.buffer.push([ source, args ]);
+                                this.buffer.push([ source, args, this ]);
                             }
                         }),
                         (function start() {
                             if (!this._started && (++this._started)) {
                                 sys.run().log([ '!START!', this.identifier() ]);
                             }else if (this._started == 1 && ++this._started) {
-                                while (this.buffer.length) {
-                                    this.pipe(this.buffer[0][0], this.buffer[0][1]);
-                                    this.buffer.shift();
+                                var evt;
+                                while (this.buffer.length && (evt = this.buffer.shift())) {
+                                    this.pipe(evt[0], evt[1], evt[2]);
                                 }
                             }
                             return (this._started == 2);
@@ -1919,8 +1955,12 @@
                             if (this.isEvents || (this._parent && this._parent.isEvents)) {
                             }else if (!this._events || !this._events.emit) {
                             }else {
-                                var parts = path.split('.'), key = parts.pop();
-                                this.pipe(parts.length ? (this.get(parts.join('.')) || this) : this, [ name, key, type, value ]);
+                                var parts = path.split('.'), key = parts.pop(), source;
+                                if (parts.length && (source = this.get(parts.join('.'))) && this.is(source)) {
+                                    this.pipe(source, [ name, key, type, value ]);
+                                }else {
+                                    this.pipe(this, [ name, parts.append(key).join('.'), type, value ]);
+                                }
                             }
                         }),
                     // === NODE === //
@@ -1936,10 +1976,7 @@
                             return this._store.vals().filter(f);
                         }),
                         (function reduce(f, r) {
-                            return this._store.keys().reduce(function(r, k, i) {
-                                r.res = f(r.res, r.node.get(k), k, r.node);
-                                return r;
-                            }, { res: r, node: this }).res;
+                            return this._store.reduce(f, r);
                         }),
                         (function parse() {
                             return this._store.parse.apply(this, arguments);
@@ -1997,8 +2034,8 @@
                             return this.child(opts, this.__);
                         }),
                     // === VALUES ETC === //
-                        (function values(recur) {
-                            return this._store.values(recur);
+                        (function values(recur, children) {
+                            return this._store.values(recur, children);
                         }),
                         (function clear(id) {
                             return id
@@ -2061,7 +2098,7 @@
                             return this.store().haslink.apply(this.store(), [].slice.call(arguments));
                         }),
                         (function find(value, cached) {
-                            return this.store().find(value, cached);
+                            return this.ref(this.store().find(value, cached));
                         }),
                         (function pertains(value) {
                             if (!value) {
@@ -2174,9 +2211,14 @@
                             if (evt.src == 'dom') {
                                 if (evt.target && evt.currentTarget) {
                                     var path = evt.currentTarget.getAttribute('data-bind-path');
+                                    var ext  = this.maybe().map(function() {
+                                        return evt.target.closest('[data-bind-ext]');
+                                    }).chain(function(elem) {
+                                        return elem.getAttribute('data-bind-ext') + '.';
+                                    }) || '';
                                     var name = evt.target.getAttribute('data-bind-name') || evt.target.id;
                                     return this.lookup(path).map(function(node) {
-                                        return node.set(name, evt.target.value);
+                                        return node.set(ext + name, evt.target.value);
                                     });
                                 }
                             }else if (evt.src == 'data' && this.view()) {
@@ -2240,10 +2282,10 @@
                             return this;
                         }),
                         (function data(v1, v2) {
-                            return v1 ? (typeof v1 == 'object' ? this._data.parse(v1, 2) : this._data.acc(v1, v2)) : this._data.values(true);
+                            return v1 ? (typeof v1 == 'object' ? this._data.parse(v1, v2 || 2) : this._data.acc(v1, v2)) : this._data.values(true);
                         }),
                         (function opts(v1, v2) {
-                            return v1 ? (typeof v1 == 'object' ? this._opts.parse(v1, 2) : this._opts.acc(v1, v2)) : this._opts.values(true);
+                            return v1 ? (typeof v1 == 'object' ? this._opts.parse(v1, v2 || 2) : this._opts.acc(v1, v2)) : this._opts.values(true);
                         })
                     ],
                     attrs: [
@@ -2625,7 +2667,11 @@
                             return typeof value == 'undefined' ? (!key ? this.$store : this.$store.get(key)) : (this.$store.set(key, value));
                         }),
                         (function get(key) {
-                            return this.$store.get(key);
+                            if (typeof key == 'string' && key.substr(0, 4) == 'eff.') {
+                                return this.eff(key.split('.').slice(1).join('.'));
+                            }else {
+                                return this.$store.get(key);
+                            }
                         }),
                         (function map(f) {
                             return this.of(this.$fn(this._f)(f.bind(this)));
@@ -2960,7 +3006,8 @@
                     if (ref) {
                         url.ref = ref;
                     }
-                    if (url.url && url.url.slice(-3) != '.js') url.url += '.js';
+                    if (url.url && url.url.slice(-3) != '.js'
+                        && url.url.slice(-4) != '.php') url.url += '.js';
                     url.url = url.url.replace(/\$/g, '');
                     return url;
                 }),
@@ -3019,11 +3066,24 @@
                     if (typeof (url) === "object") request = $_pure(url);
                     else if (typeof (url) === "string") request = $_pure({ 'url' : url, 'cached' : (options === true) });
                     else request = url;
-                    return function (succ, fail) {
+                    return function(succ, fail) {
                         request(function (_request) {
                             var xhr = $_newxhr(), type = _request.type || 'GET';
                             xhr.onload = function () {
-                                succ(xhr.responseText);
+                                if (_request.parse) {
+                                    try {
+                                        var ctype = xhr.getResponseHeader('Content-Type');
+                                        if (ctype && ctype.indexOf && ctype.indexOf('json') > -1) {
+                                            succ(JSON.parse(xhr.responseText));
+                                        }else {
+                                            succ(xhr.responseText);    
+                                        }
+                                    }catch (e) {
+                                        fail(e);
+                                    }
+                                }else {
+                                    succ(xhr.responseText);
+                                }
                             };
                             xhr.onerror = function (e) {
                                 e.preventDefault();
@@ -3054,8 +3114,8 @@
                                 xhr.setRequestHeader('Cache-Control', 'no-cache');
                                 xhr.setRequestHeader('If-Modified-Since', 'Thu, 01 Jun 1970 00:00:00 GMT');
                             }
-                            if (_request.type == 'GET' || !_request.data) return xhr.send();
-                            else return xhr.send(_request.data);
+                            if (_request.type == 'GET' || !_request.data) xhr.send();
+                            else xhr.send(_request.data);
                         }, fail);
                     };
                 }

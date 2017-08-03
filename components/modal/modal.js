@@ -121,7 +121,7 @@ define(function() {
 					},
 					createForm: function(name, fields) {
 						return this.root().component(name, 'form').once(function(f) {
-							f.control('main').fields(fields, 'data.main');
+							f.fields(fields, 'data.main', true);
 							f.attach(f.parent('data.tmpl.body'));
 							return f;
 						});

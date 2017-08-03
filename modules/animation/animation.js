@@ -27,7 +27,7 @@ define(function() {
 						return [ grid.pure(), form.pure() ].lift(function(g, f, b) {
 
 							app.deps('components').grid = g;
-							app.deps('components').form = f.control('main').fields(app.fields, 'data.main');
+							app.deps('components').form = f.fields(app.fields, 'data.main', true);
 
 							return app;
 
