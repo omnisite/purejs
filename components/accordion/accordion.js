@@ -17,26 +17,60 @@ define(function() {
 
 		return {
 			ext: {
+				initialize: function() {
+					var style = this.view().style();
+					var attrs = style.run().run([ 'height', 'width' ]).lift(function(s, a) {
+						return { height: a.height - s.height, width: a.width - s.width };
+					}).ap(style.run('.row').run([ 'height', 'width' ])).lift(function(attrs, rule) {
+						rule.style.maxHeight = attrs.height + 'px';
+						return rule;
+					}).ap(this.view().rules('#' + this.nid() + ' .panel-body').first());
+				},
 				panel: function(evt) {
 					return this.get('data.control.main').init(evt);
 				},
 				toggle: function(name, continuation) {
-					return this.lookup('data.main.' + name + '.$find').map(function(io) {
-						return io.runMaybe('.panel-heading');
-					}).lift(function(elem, accor) {
-						return accor.get('data.control.main').toggle(elem.nextElementSibling);
-					}).ap(this).chain(function(load) {
-						return load.run(continuation || unit);
-					});
+					var current = this.state('current-panel');
+					var control = this.control('main');
+					if (current && name == current) {
+						this.state('current-panel', this.state('previous-panel', this.state('next-panel', '')));
+					}else if (current) {
+						control.$toggle(this.state('previous-panel', current));
+						this.state('next-panel', name);
+					}else {
+						this.state('next-panel', name);
+					}
+					return control.$toggle(name, continuation);
 				},
 				item: function(main, name) {
-					return this.set('data.current.item', this.lookup('data.main.' + main).chain(function(info) {
-						return info.id + '.' + name;
-					}));
+					if (!main) {
+						return this.get('data.current.item');
+					}else if (main == 'none') {
+						return this.set('data.current.item', '');
+					}else {
+						return this.set('data.current.item', this.lookup('data.main.' + main).map(function(info) {
+							return info.id + '.' + name;
+						}).orElse('').unit());
+					}
+				},
+				none: function() {
+					return this.item('none');
 				}
 			},
 			control: {
 				main: {
+					$toggle: function(name, continuation) {
+						var root = this.root();
+						return root.lookup('data.main.' + name + '.$find').map(function(io) {
+							return io.runMaybe('.panel-heading');
+						}).lift(function(elem, accor) {
+							accor.state('current-panel', accor.state('next-panel'));
+							accor.state('next-panel', '');
+							return accor.get('data.control.main').toggle(elem.nextElementSibling);
+						}).ap(root).chain(function(load) {
+							return load.run(continuation || unit);
+						});
+					},
 					anim: function() {
 						return (this._anim || (this._anim = sys.eff('dom.elements.animate').bind(function(a) {
 						  return a.fx(a.run({ duration: 150, easing: 'swing', toggle: true, klass: true, prop: 'max-height', fn: 'px', from: 0, to: 'max-height', value: 'from' })).map(a.constructor.$pure);
@@ -62,7 +96,7 @@ define(function() {
 					load: function(name) {
 						var info = this.panel(name);
 						if (!info.done && (info.done = true)) {
-							return this.data(name).call(this, info).ap(info.$add);
+							return this.data(name).call(this, name, info).ap(info.$add);
 						}
 						return this.root();
 					},
@@ -72,12 +106,17 @@ define(function() {
 					action: function(action, ref, target, evt) {
 						var name = ref.split('.').at(1);
 						var info = this.panel(name);
+						var root = this.root();
 						if (!info.done) {
 							// Pane not loaded - no need to refresh anything //
 						}else if (action == 'remove') {
-							return info.$find.toMaybe().run('[data-key="'+target+'"]').chain(function(elem) {
-								return elem.parentElement.removeChild(elem);
+							var id = info.$find.toMaybe().run('[data-key="'+target+'"]').chain(function(elem) {
+								return elem.parentElement.removeChild(elem).getAttribute('data-id');
 							});
+							if (id && id.concat('.', target) == root.item()) {
+								root.none();
+							}
+							return root;
 						}else if (action == 'create') {
 							return info.$find.run('[data-path="'.concat(ref, '"]'))
 							|| this.data(name).call(this, evt, target).ap(info.$add).run(this.bin(function(main, item) {
@@ -123,7 +162,8 @@ define(function() {
 							res = sys.find(uid);
 							if (res && key) this.root().set('data.current.item', res.uid() + '.' + key);
 						}else if (key) {
-							this.root().set('data.current.item', key);
+							res = res.getAttribute('data-path');
+							this.root().set('data.current.item', res ? (res + '.' + key) : key);
 						}
 					},
 					show: function(evt) {

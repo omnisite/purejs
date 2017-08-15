@@ -30,14 +30,15 @@
             }else {
                 tick.schedule = shared.nextTick = proc.get('native.nxt')(Function.prototype.bind.call($main, tick));
 
-                var raf    = proc.set('animFrame', $clean('raf', shared));
-                raf.fn     = $shift;
-                raf.run    = $run(raf, $wrap);
-                raf.schedule  = $schedule(proc.get('native.raf'), Function.prototype.bind.call($main, raf));
-                raf.enqueue   = $enqueue(raf.store,  raf.schedule);
+                var raf      = proc.set('animFrame', $clean('raf', shared));
+                raf.fn       = $shift;
+                raf.run      = $run(raf, $wrap);
+                raf.schedule = $schedule(proc.get('native.raf'), Function.prototype.bind.call($main, raf));
+                raf.enqueue  = sys.ctor.base.prototype.raf = $enqueue(raf.store,  raf.schedule);
             }
-            tick.enqueue = $enqueue(tick.store, tick.schedule);
-            tick.next = $next(tick.enqueue);
+            tick.enqueue = sys.ctor.base.prototype.enqueue = $enqueue(tick.store, tick.schedule);
+            tick.next    = $next;
+
             sys.klass('Cont').prop('next', tick.next);
             return proc;
         }),
@@ -58,7 +59,7 @@
         // getCleanInfo //
         (function(code, shared) {
             return {
-                ts: 0, ms: 0, buffer: 0, result: 0,
+                ts: 0, ms: 0, buffer: 0, result: 0, done: 0,
                 count: 0, size: 0, length: 0, frameid: 0, index: 0,
                 code: code, isRaf: code == 'raf',
                 store: [], shared: shared
@@ -159,6 +160,7 @@
         (function() {
             this.length = this.store.length;
             this.size   = this.length;
+            this.done   = this.count;
             this.frameid++;
 
             while(++this.count && this.store.length) {
@@ -180,6 +182,7 @@
                 }
                 if (this.suspend || (this.limit < (this.lastts = self.now()))) break;
             };
+            this.done = this.count - this.done;
             return (!(this.length = this.store.length));
         }),
 
@@ -208,26 +211,18 @@
         }),
 
         // next //
-        (function(ext, wrap, combine) {
-            return function(enqueue) {
-                return ext(wrap, combine, enqueue);
-            }
+        (function(combine) {
+            return function $_next(body) {
+                return combine(body);
+            };
         })(
-            (function $ext(wrap, combine, enqueue) {
-                return function $_next(cont) {
-                    return wrap(combine, enqueue, cont);
-                };
-            }),
-            (function $wrap($combine, $enqueue, $body) {
+            (function $combine($body) {
                 return function $_pure($cont) {
-                  return $enqueue( $combine( $body, $cont ) );
+                    return function() {
+                       $body($cont);
+                       return true;
+                    };
                 }
-            }),
-            (function $combine($body, $cont) {
-                return function() {
-                   $body($cont);
-                   return true;
-                };
             })
         )
     ),
@@ -241,9 +236,11 @@
                 var utils   = this.store('utils');
                 var process = this.store('process');
                 var $async  = this.store('async');
+                var $cont   = this.klass('Cont');
 
-                this.klass('Cont').prop('lazy', $async.set('lazy', lazy(process, 'nextTick.enqueue')));
+                $cont.prop('lazy', $async.set('lazy', lazy(process, 'nextTick.enqueue')));
                 $async.set('then', then($async.get('lazy')));
+                $cont.prop('then', utils.get('andThen')(process.get('lazy')));
                 utils.set('fromCallback', frcb.call(process));
 
                 return $async;
@@ -251,10 +248,10 @@
             (function scheduledBindWrap() {
                 return [].slice.call(arguments).apply();
             })(
-                (function wrapDispatcher(wrap, make, start, cont, done) {
+                (function wrapDispatcher(wrap, make, start, cont, done, pure) {
                     return function bindDispatch(scheduler, timer) {
                         var wrapped = scheduler.set('wrapped', wrap(scheduler));
-                        scheduler.set('lazy', wrapped(make(done, cont, timer)));
+                        scheduler.set('lazy', wrapped(make(pure, cont, timer)));
                         return wrapped(make(done, start, timer));
                     }
                 }),
@@ -283,7 +280,14 @@
                     }
                 }),
                 (function $_next(succ, result) {
-                    return function() { succ(result); return true; };
+                    return function() {
+                        return succ(result) || true;
+                    };
+                }),
+                (function $_pure(succ, pure) {
+                    return function() {
+                        return pure(succ) || true;
+                    };
                 })
             ),
             (function monadicBindWrap() {
@@ -352,6 +356,102 @@
 
         return [].slice.call(arguments);
     })(
+        // === State === //
+            (function() {
+                return {
+                    klass: function StateT(f, x) {
+                        this.$$init(f, x);
+                    },
+                    ext: [
+                        (function $$init(s, m) {
+                            this.id = this.ctor.$id = this.id();
+                            this.runStateT  = s;
+                            this.innerMonad = m;
+                        }),
+                        (function map(f) {
+                            var runStateT = this.runStateT;
+                            return this.of(function(state) {
+                                var m = runStateT(state);
+                                return m.map(function(s) {
+                                    return { value: f(s.value), state: s.state };
+                                });
+                            }, this.innerMonad);
+                        }),
+                        (function bind(f) {
+                            var runStateT = this.runStateT;
+                            return this.of(function(state) {
+                                var m = runStateT(state);
+                                return m.bind(function(s) {
+                                    return f(s.value).runStateT(s.state);
+                                });
+                            }, this.innerMonad);
+                        }),
+                        (function join() {
+                            return this.bind(function(s) {
+                                return s;
+                            });
+                        }),
+                        (function evalStateT(initState) {
+                            var st = this.runStateT(initState),
+                                im = this.innerMonad;
+                            return st.bind(function(result) {
+                                return im.pure(result.value);
+                            });
+                        }),
+                        (function execStateT(initState) {
+                            var st = this.runStateT(initState),
+                                im = this.innerMonad;
+                            return st.bind(function(result) {
+                                return im.pure(result.state);
+                            });
+                        })
+                    ],
+                    $fn: function(ctor) {
+                        function pure(v, im) {
+                            return ctor.of(function(state) {
+                                return im.pure({ value: v, state: state });
+                            }, im);
+                        };
+                        function lift(m, im) {
+                            return ctor.of(function(state) {
+                                return m.bind(function(v) {
+                                    return im.pure({ value: v, state: state });
+                                });
+                            }, im);
+                        };
+                        function get(im) {
+                            return ctor.of(function(state) {
+                                return im.pure({ value: state, state: state });
+                            }, im);
+                        };
+                        function put(newState, im) {
+                            return ctor.of(function(state) {
+                                return im.pure({ value: undefined, state: newState });
+                            }, im);
+                        };
+                        function modify(f, im) {
+                            return get(im).bind(function(state) {
+                                var newState = f(state);
+                                return put(newState, im);
+                            });
+                        };
+                        function gets(f, im) {
+                            return get(im).bind(function(state) {
+                                var valFromState = f(state);
+                                return pure(valFromState, im);
+                            });
+                        };
+                        return {
+                            pure: pure, lift: lift, get: get, put: put, modify: modify, gets: gets
+                        };
+                    },
+                    init: function(type, klass, sys) {
+                        klass.attr('$fn', klass.prop('$fn', type.$fn(klass)));
+                        klass.prop('of', this.find('Functor').prop('of'));
+                    }
+                };
+                return StateT;
+            }),
         // === IO === //
             (function IO() {
                 return {
@@ -361,7 +461,7 @@
                     },
                     ext: [
                         (function $$init(x) {
-                            this.id = this.id();
+                            this.id = this.ctor.$id = this.id();
                             this.unsafePerformIO = x;
                         }),
                         (function fx(f) {
@@ -372,8 +472,14 @@
                               return x;
                             });
                         }),
+                        (function unit() {
+                            return this;
+                        }),
+                        (function $pure(x) {
+                            return x ? (x instanceof this.__ ? x : this.constructor.$pure(x)) : this.constructor.$pure;
+                        }),
                         (function pure() {
-                            return this.bind(this.constructor.$pure);
+                            return this.bind(this.$pure());
                         }),
                         (function nest() {
                             return this.of(this);
@@ -402,14 +508,19 @@
                               return f(thiz.unsafePerformIO()).run(v);
                             });
                         }),
-                        (function run() {
-                            return this.unsafePerformIO.apply(this, arguments);
-                        }),
                         (function chain() {
-                            return this.unsafePerformIO.apply(this, arguments);
+                            return this.unsafePerformIO.apply(this, [].slice.call(arguments));
                         }),
                         (function raf() {
                             return this.$fn.raf(Function.prototype.apply.bind(this.unsafePerformIO, this, [].slice.call(arguments)));
+                        }),
+                        (function delay() {
+                            var args = [].slice.call(arguments);
+                            var time = args.length ? args.shift() : 10;
+                            return self.setTimeout(Function.prototype.apply.bind(this.unsafePerformIO, this, args), time);
+                        }),
+                        (function run() {
+                            return this.unsafePerformIO.apply(this, [].slice.call(arguments));
                         }),
                         (function runIO() {
                             var args = [].slice.call(arguments);
@@ -426,7 +537,7 @@
                             return monad.ap(this);
                         }),
                         (function pipe(f) {
-                            return this.fx(this.$fn(f)(this.unsafePerformIO));
+                            return this.fx(this.$fn.compose(this.unsafePerformIO)(f));
                         }),
                         (function lift(f) {
                             return f ? this.map(function(v1) {
@@ -434,6 +545,16 @@
                                     return f.call(this, v1, v2);
                                 };
                             }).pure() : this.lift(this.unsafePerformIO);
+                        }),
+                        (function liftIO() {
+                            return this.nest().lift(function(thiz, next) {
+                                return this.fx(function(ref) {
+                                    return thiz.run(ref).ap(thiz.$pure(next));
+                                });
+                            });
+                        }),
+                        (function flip() {
+                            return this.constructor.lift(this.$fn.flip(this.unsafePerformIO));
                         })
                     ],
                     attrs: (function() {
@@ -458,19 +579,58 @@
                     findType: function(type, name) {
                         return type.find(name);
                     },
+                    findStore: function() {
+                        var find = this.pure(this.$store.db.bin(function(db, uid) {
+                            return db.find(uid);
+                        }));
+                        return find.cache('find', find);
+                    },
+                    bindIO: function(io) {
+                        return io instanceof Function ? this.bindIO(this.fx(io)) : this.fx(this.bin(function(thiz, v) {
+                            return io.unsafePerformIO(thiz.unsafePerformIO(), v);
+                        }));
+                    },
                     wrapIO: function(io) {
+                        return Function.prototype.call.bind(io.unsafePerformIO, io);
+                    },
+                    make: function() {
+                        return {
+                            klass: [].slice.call(arguments).shift(),
+                            $$init: function(make) {
+                                return function(x) {
+                                    this.unsafePerformIO = make(x()).wrapIO();
+                                }
+                            },
+                            make: [].slice.call(arguments).pop(),
+                            init: function(type, klass, sys) {
+                                var io = klass.find('io').proto();
+                                klass.prop('$$init', type.$$init(type.make));
+                                klass.prop('$pure', io.$pure.bind(io));
+                                klass.prop('fx', io.fx.bind(io));
+                                klass.prop('of', io.of.bind(io));
+                            }
+                        };
+                    },
+                    makeIO: function(make) {
                         return function() {
-                            return io.run.apply(io, [].slice.call(arguments));
+                            var args  = [].slice.call(arguments);
+                            var klass = args[0] instanceof Function ? args.shift() : this.named(args.shift(), false, false, true);
+                            return this.parse(make(klass, args.pop()));
                         }
                     },
                     init: function(type, klass, sys) {
                         this.root().prop('$find', klass.pure(this.root).lift(type.findType));
                         klass.prop('wrapIO', sys.get('utils.call')(type.wrapIO));
+                        klass.prop('bindIO', type.bindIO);
+                        klass.attr('make', type.makeIO(type.make));
                         klass.prop('$fn', {
                             compose: klass.find('Compose').prop('$fn'),
                             enqueue: sys.get('process.nextTick.enqueue'),
-                            raf: sys.get('process.animFrame.enqueue')
+                            raf: sys.get('process.animFrame.enqueue'),
+                            flip: sys.get('utils.flip'),
+                            bind: sys.get('utils.andThen')(klass.$ctor.$pure)
                         });
+                        type.findStore.call(klass);
                     }
                 };
             }),
@@ -498,6 +658,12 @@
                         }),
                         (function isBase(v) {
                             return (v || (v = this)).constructor === Function;
+                        }),
+                        (function pick() {
+                            return this.keys().reduce(function(r, v, k) {
+                                if (r.keys.indexOf(k) > -1) r.res[k] = v;
+                                return r;
+                            }, { self: this, keys: [].slice.call(arguments).flat(), res: {} }).res;
                         }),
                         (function map(f, r) {
                             return this.keys().reduce(function(r, k, i) {
@@ -572,9 +738,9 @@
                                     return o.keys.call(r).bind(function(k, i) {
                                         var v = f(x, r[k], k, i, r, l);
                                         return v instanceof Array
-                                            ? v.bind(m(f, (x[k] = {}), i, r[k], l+1, x))
+                                            ? v.bind(m(f, (x[k] = o.of({})), i, r[k], l+1, x))
                                                 : (o.isObject(v) ? $bind((x[k] = o.of({})), v, l+1) : v);
-                                    });//.bind(unit);
+                                    }).chain(o.konst(x));//.bind(unit);
                                 }
                             }),
                             (function(f, x, t, j, l, o) {
@@ -647,19 +813,22 @@
                 return {
                     parent: 'Functor',
                     klass: function Maybe(x) {
-                        this.id = this.id();
+                        this.id = this.ctor.$id = this.id();
                         if (x || typeof x != 'undefined') this._x = x;
                     },
                     ext: [
                         (function prop() {
                             var args = Array.prototype.slice.call(arguments);
-                            return this.map(this.property(args.shift()).apply(undefined, args));
+                            return this.map(this.$fn.prop(args.shift()).apply(undefined, args));
                         }),
                         (function get(key) {
-                            return this.map(this.pget(key));
+                            return this.map(this.$fn.pget(key));
                         }),
                         (function values(recur) {
-                            return this.map(this.pval(recur));
+                            return this.map(this.$fn.pval(recur));
+                        }),
+                        (function find(key) {
+                            return this.map(this.$fn.pfind(key));
                         }),
                         (function $isNothing(v) {
                             return v === null || v === undefined || v === false;
@@ -685,7 +854,7 @@
                             if (f instanceof Function) {
                                 return this.ifSome(f || unit);
                             }else if (this._x instanceof Function) {
-                                return this.ifSome(this.fn.pure(f));
+                                return this.ifSome(this.$fn.pure(f));
                             }else {
                                 return this.ifSome(f);
                             }
@@ -701,8 +870,8 @@
                         }),
                         (function ap(other) {
                             return this.is(other) ? this.map(function(x) {
-                                return x instanceof Function ? (this.test(other) ? other.chain(x) : other.map(x)) : (x.ap ? x.ap(other) : other.ap(x));
-                            }) : (other instanceof Function ? this.of(other).ap(this._x) : this.of(other).map(this._x));
+                                return x instanceof Function ? (this.test(other) ? other.chain(x) : other.map(x)) : (x.ap ? x.ap(other) : other.run(x));
+                            }) : (other instanceof Function ? this.of(other).ap(this._x) : this.ap(this.of(other)));
                         }),
                         (function apply(other) {
                             return other.ap(this);
@@ -712,6 +881,21 @@
                         }),
                         (function join() {
                             return this._x;
+                        }),
+                        (function toIO() {
+                            return this.chain(this.$fn.io.pure);
+                        }),
+                        (function isIO() {
+                            return this.chain(function(x) {
+                                return this.$fn.io.is(x);
+                            });
+                        }),
+                        (function toMaybeIO() {
+                            return this.$fn.io.of(this).lift(function(mbfn, value) {
+                                return mbfn.chain(function(fn) {
+                                    return this.of(value).chain(fn);
+                                });
+                            });
                         })
                     ],
                     attrs: [
@@ -729,20 +913,6 @@
                             return new this(x);
                         })
                     ],
-                    toIO: function($iopure) {
-                        return function() {
-                            return this.chain($iopure);
-                        }
-                    },
-                    toMaybeIO: function($iof) {
-                        return function() {
-                            return $iof(this).lift(function(mbfn, value) {
-                                return mbfn.chain(function(fn) {
-                                    return this.of(value).chain(fn);
-                                });
-                            });
-                        }
-                    },
                     toMaybe: function($maybe) {
                         return function() {
                             return this.map($maybe.of);
@@ -760,14 +930,18 @@
                     },
                     init: function(type, klass, sys) {
                         var root = this.$store.root, utils = root.get('utils');
-                        var property = klass.prop('property', utils.get('property'));
-                        klass.prop('pget', property('get'));
-                        klass.prop('pval', property('values'));
+                        var prop = utils.get('property');
+                        var IO   = this.find('IO');
+                        klass.prop('$fn', {
+                            prop: prop,
+                            pget: prop('get'),
+                            pval: prop('values'),
+                            pfind: prop('find'),
+                            pure: sys.get('async.pure'),
+                            io: IO, cont: this.find('Cont')
+                        });
                         klass.prop('curry', utils.get('curry'));
-                        var IO = this.find('IO');
-                        klass.prop('toIO',  type.toIO(IO.pure));
-                        klass.prop('toMaybeIO', type.toMaybeIO(IO.of));
-                        IO.prop('toMaybe',  type.toMaybe(klass));
+                        this.find('Functor').prop('toMaybe',  type.toMaybe(klass));
                         IO.prop('runMaybe', type.runMaybe(klass));
                         this.root().base.prototype.maybe = type.maybe(klass);
                     }
@@ -945,7 +1119,7 @@
                             (function bind(f, m) {
                                 return function next(o) {
                                     return function bound(x, i) {
-                                        return x instanceof Array ? m(next, x) : f(x, i, o);
+                                        return f(x, i, o);//x instanceof Array ? m(next, x) : f(x, i, o);
                                     };
                                 };
                             }),
@@ -1272,8 +1446,8 @@
                                 o || (o = {}); o.aid || (o.aid = this.arrid());
                                 return (f ? this.bind(f, o) : this).wrap(ext.async.get(k || unit), o);
                             };
-                            Array.prototype.fmap = function(f) {
-                                return ext.async.then(this.collect(), ext.cont(f));
+                            Array.prototype.fmap = function(f, p) {
+                                return ext.async.then(this.collect(p), ext.cont(f));
                             };
                             Array.prototype.flatmap = function(f) {
                                 return this.bind(f).chain(ext.async.flatmap(unit));
@@ -1289,6 +1463,37 @@
                             return ext;
                         })
                     )
+                };
+            }),
+        // === Index === //
+            (function() {
+                return {
+                    parent: 'Store',
+                    klass: function Index(x) {
+                        this.$super(x, 'index');
+                    },
+                    attrs: [
+                        (function of(x) {
+                            return (new this(x)).maybe();
+                        })
+                    ],
+                    make: function(cid, uid) {
+                        if (uid && !this._idx.get(cid)) this._idx.set(cid, uid);
+                        return this._idx.get(cid);
+                    },
+                    index: function($index, $make) {
+                        return function(cid, node) {
+                            this._idx = $index.of(this);
+                            return (this.$index = $make).call(this, cid, node ? node.uid() : null);
+                        }
+                    },
+                    node: function(key, value) {
+                        return this._store.$index(key, value);
+                    },
+                    init: function(type, klass, sys) {
+                        this.prop('$index', type.index(klass, type.make));
+                        this.find('$node').prop('$index', type.node);
+                    }
                 };
             }),
         // === Link === //
@@ -1324,7 +1529,7 @@
                             var parts = path.split('.');
                             var name  = parts.pop();
                             var store = parts.length ? (root.get(parts) || root.ensure(parts)).store() : root.node(name).store();
-                            if (items) store.parse(items);
+                            if (items) store.parse(this.klass('Obj').of(items));
                             return store.link(type);
                         }),
                         (function coyo() {
@@ -1338,7 +1543,7 @@
                                             r = v(r);                             
                                         }else if (typeof v == 'object') {
                                             if (v.$$map && v.$$run) {
-                                                r = v.$$run(r);
+                                                r = v.$$run(r).call(v, r);
                                             }else if (v.$$map) {
                                                 r = v.$$map(r);
                                             }else if (r.$$map) {
@@ -1352,8 +1557,8 @@
                                 },
                                 node: this.konst(node.get('node') || node),
                                 $$link: this.konst(this),
-                                $$run: function(evt) {
-                                    return (this[this.$$map(evt)] || unit).call(this, evt);
+                                $$run: function(v) {
+                                    return this[this.$$map(v)] || unit;
                                 }
                             }).extend(args.shift()));
                             return this.klass('Coyoneda').of(function(base) {
@@ -1419,7 +1624,12 @@
                         });
                         this.set('valueMap', function(value, maponly) {
                             var rec = this.current().first();
-                            var map = rec.map.get(value || rec.def) || (rec.def ? (rec.map.get(rec.def) || value || rec.def) : value) || value;
+                            var arg = value.split('.');
+                            var fst = arg.shift();
+                            var map = rec.map.lookup(fst).chain(function(val) {
+                                return arg.length ? val.get(arg.join('.')) : val;
+                            }) || (rec.def ? (rec.map.get(rec.def) || value || rec.def) : null);
+                            //var map = rec.map.get(value || rec.def) || (rec.def ? (rec.map.get(rec.def) || value || rec.def) : null);// || value;
                             if (maponly) return map;
                             var ini = rec.lookup ? this.initial(rec.lookup === true ? value : value.path(rec.lookup, true)) : this.initial();
                             return map instanceof Array ? ini.select(map) : (ini.get(map) || (rec.def && ini.get(rec.def)));
@@ -1512,8 +1722,8 @@
             (function() {
                 return {
                     parent: 'Node',
-                    klass: function Record(opts) {
-                        this.$super(opts);
+                    klass: function Record(x) {
+                        this.$super(x);
                     },
                     ext: [
                         { name: '_children', value: 'nodes' }
@@ -1524,9 +1734,9 @@
             (function() {
                 return {
                     parent: 'Node',
-                    klass: function Schema(opts) {
-                        this.$super(opts);
-                        this.configure(opts);
+                    klass: function Schema(x) {
+                        this.$super(x);
+                        this.configure(x);
                     },
                     ext: [
 
@@ -1549,7 +1759,7 @@
                                     node = root.get(type).lookup('nodes').chain(function(nodes) {
                                         return nodes.reduce(function(r, v, k, n) {
                                             if (def) {
-                                                r[k] = root.control('main').add(k, true);
+                                                r[k] = { type: 'schema', fields: root.control('main').add(k, true) };
                                             }else {
                                                 r[k] = (vals[k] || (vals[k] = [])).map(function(x) {
                                                     return root.control('main').add(k, x);
@@ -1612,6 +1822,75 @@
                     }
                 };
             }),
+        // === Cell === //
+            (function() {
+                return {
+                    klass: function Cell(f) {
+                        this.v = undefined, this.isDefined = false, this.queue = [];
+                        if (f) this.f = f;
+                        else if (!this.f) this.f = unit;
+                    },
+                    ext: [
+                        (function get(k) {
+                            if (this.isDefined) {
+                                //JavaScript as an Embedded DSL 429 430 G. Kossakowski et al.
+                                //k(this.v);
+                                this.enqueue(this.atom(k, this.v));
+                            }else {
+                                this.queue.push(k);
+                            }
+                        }),
+                        (function set(v) {
+                            if (this.isDefined) {
+                                throw "can’t set value twice"
+                            }else {
+                                this.run(this.f(v));
+                            }
+                        }),
+                        (function atom(k, v) {
+                            return function() {
+                                k(v); return true;
+                            }
+                        }),
+                        (function run(r) {
+                            if (this.isDefined) {
+                                throw "can’t set value twice"
+                            }else {
+                                this.v = r; this.isDefined = true,
+                                this.queue.splice(0).bind(function(f) {
+                                    f(r) //non-trivial spawn could be used here })
+                                }).run();
+                            }
+                        })
+                    ],
+                    attrs: [
+                        (function of(f) {
+                            return new this(f);
+                        })
+                    ],
+                    cont: function(cell) {
+                        return function(v) {
+                            cell.set(v);
+                        }
+                    },
+                    kont: function(klass) {
+                        return function(cell) {
+                            return (cell._cont || (cell._cont = klass.of(function $_pure(k) {
+                                cell.get(k);
+                            })));
+                        }
+                    },
+                    init: function(type, klass, sys) {
+                        var fn = sys.root.get('sys.fn'), utils = sys.get('utils');
+                        klass.$ctor.map = utils.get('compose')(fn.$const)(utils.get('andThen')(klass.of));
+                        klass.prop('enqueue', sys.get('process.nextTick.enqueue'));
+                        klass.prop('cont', utils.get('call')(type.cont));
+                        var cont = this.find('Cont');
+                        this.find('Node').prop('cell', klass.of);
+                        klass.prop('kont', utils.get('call')(type.kont(cont)));
+                    }
+                };
+            }),
         // === Value === //
             (function() {
                 return {
@@ -1651,15 +1930,15 @@
                         (function bind(f) {
                             return this.mv && !this.isLocked(this.mv) ? this.unlock().bind(f) : this.of(this.mv.bind(f), false);
                         }),
-                        (function resolve(f) {
-                            return this.mv && !this.isLocked(this.mv) ? this.unlock().resolve(f) : this.of(this.mv.resolve(f), false);
+                        (function resolve(f, g) {
+                            return this.mv && !this.isLocked(this.mv) ? this.unlock().resolve(f, g) : this.of(this.mv.resolve(f, g), false);
                         }),
                         (function pure() {
                            return this.mv && !this.isLocked(this.mv) ? this.unlock().pure() : this.mv.pure(); 
                         }),
                         (function create() {
                             var args = [].slice.call(arguments);
-                            return this.mv.bind(function(v) {
+                            return this.cell().bind(function(v) {
                                 return function $_pure(k) {
                                     v.create.apply(v, args).run(k);
                                 }
@@ -1698,11 +1977,24 @@
                             return v.of(this instanceof v.$ctor ? this.mv : this);
                         }
                     },
+                    cell: function($cell) {
+                        return function() {
+                            var cell = this._cell;
+                            if (!cell) {
+                                cell = this._cell = $cell();
+                            }
+                            if (!cell.isBound) {
+                                cell.isBound = true;
+                                this.mv.bind(cell.cont()).run();
+                            }
+                            return cell.kont();
+                        }
+                    },
                     init: function(type, klass, sys) {
                         klass.$ctor.isLocked  = type.isLocked(klass);
                         klass.$ctor.wasLocked = type.wasLocked(klass);
                         klass.$ctor.unlock    = type.unlock(klass.$ctor.isLocked);
-
+                        klass.prop('cell', type.cell(this.find('Cell').of));
                         this.find('Cont').prop('$value', type.value(klass));
                     }
                 };
@@ -1715,7 +2007,7 @@
     })(
         // === IMPORT / PARSE === //
             (function $$THREADS() {
-                return this.store('utils.importFuncs')([].slice.call(arguments), this.store().child('threads'));
+                return (this.ctor.base.prototype.atom = unit(this.store('utils.importFuncs')([].slice.call(arguments), this.store().child('threads'))).get('atom'));
             }),
         // === VALUES === //
             (function lazyValue(v) { return (function() { return v; }); }),
@@ -2069,14 +2361,14 @@
                 return {
                     parent: 'Functor',
                     klass: function Coyoneda(f, x) {
-                        this.id = this.ctor.$id = this.id();
                         this.$$init(f, x);
                     },
                     ext: [
                         (function $$init(f, x) {
+                            this.id = this.ctor.$id = this.id();
                             if (f) this.mf = f;
                             else if (!this.mf) this.mf = unit;
-                            if (x) this.mv = x;
+                            if (typeof x != 'undefined') this.mv = x;
                         }),
                         (function map(f) {
                             return new this.constructor(this.$fn.compose(this.mf)(f), this.mv);
@@ -2084,11 +2376,17 @@
                         (function bimap(f, g) {
                             return this.of(this.$fn.compose(this.mf)(f), (g || unit)(this.mv));
                         }),
-                        (function bind(x, f) {
-                            return new this.constructor(f ? this.$fn.compose(this.mf)(f) : this.mf, x || this.mv);
+                        (function bind(f, x) {
+                            return new this.constructor(this.$fn.compose(typeof x != 'undefined' ? this.$fn.lift(this.mv, this.mf, x) : this.mf)(f), x || this.mv);
                         }),
                         (function chain(f, x) {
                             return (f ? this.$fn.compose(this.mf)(f) : this.mf)(x || this.mv);
+                        }),
+                        (function ap(x) {
+                            return (this.test(x) ? x : this.klass('maybe').of(x)).map(this.run.bind(this));
+                        }),
+                        (function apply(monad) {
+                            return this.test(monad) ? monad.ap(this).run() : this.run(monad);
                         }),
                         (function lift(x) {
                             return new this.constructor(this.$fn.lift(this.mv, this.mf, x), x);
@@ -2097,7 +2395,7 @@
                             return this.$fn.ftor(this);
                         }),
                         (function run(x) {
-                            return x ? (this.mv ? (x instanceof Function ? x(this.mf(this.mv)) : this.mf(this.mv)(x)) : this.mf(x)) : (this.mv ? this.mf(this.mv) : this.mf);
+                            return typeof x != 'undefined' ? (typeof this.mv != 'undefined' ? (x instanceof Function ? x(this.mf(this.mv)) : this.mf(this.mv)(x)) : this.mf(x)) : (typeof this.mv != 'undefined' ? this.mf(this.mv) : this.mf);
                         })
                     ],
                     attrs: [
@@ -2120,7 +2418,7 @@
                         })
                     ],
                     lift: function(v, f, x) {
-                        return v ? f(v) : (x ? f : f());
+                        return typeof v != 'undefined' ? f(v) : (typeof x != 'undefined' ? f : f());
                     },
                     init: function(type, klass, sys) {
                         klass.prop('$fn', {
@@ -2130,15 +2428,114 @@
                     }
                 };
             }),
+        // === Data === //
+            (function() {
+                return {
+                    parent: 'Store',
+                    klass: function Data(x) {
+                        this.$super();
+                        this._step = 0;
+                        if (x && this.is(x)) this._ref = x;
+                        else if (x) this.parse(x);
+                    },
+                    ext: [
+                        (function next() {
+                            return this.at(this._step < this.length() ? this._step++ : ((this._step = 0) || this._step++));
+                        }),
+                        (function curr() {
+                            return this.at((this._step || 1) - 1);
+                        }),
+                        (function done() {
+                            return this._step == this.length();
+                        }),
+                        (function map(f) {
+                            if (typeof f == 'object') {
+                                return this.constructor.of(this.reduce(function(r, v, k, i, o) {
+                                    r.res[k] = r.obj[k] || v;
+                                    return r;
+                                }, { res: {}, obj: f }).res);
+                            }else {
+                                return this.__.prototype.map.call(this, f);
+                            }
+                        }),
+                        (function cont() {
+                            return this.state().evalStateT(this.coyo());
+                        })
+                    ],
+                    attrs: [
+                        (function of(x) {
+                            return (new this(x)).maybe();
+                        })
+                    ],
+                    io: function() {
+                        return this.find('io').pure(function(data) {
+                            return this.fx(function(state) {
+                                if (state.step < data.length()) {
+                                    return data.at(state.step++);
+                                }else {
+                                    state.step = 0;
+                                    return data.klass('io').pure(unit).toMaybe().to('cont');
+                                }
+                            }).toMaybe();
+                        });
+                    },
+                    coyo: function() {
+                        return this.find('Coyoneda').of(function(io) {
+                            return function(state) {
+                                return io.run(state).chain(function(result) {
+                                    return this.test(result) ? result : this;
+                                });
+                            }
+                        });
+                    },
+                    $coyo: function(coyo, io) {
+                        return function() {
+                            return coyo.lift(io.run(this));
+                        }
+                    },
+                    run: function(data) {
+                        return function(monad) {
+                            return data.run().ap(monad).chain(function(result) {
+                                return this.test(result) ? result : this;
+                            });
+                        }
+                    },
+                    state: function($cont, $run) {
+                        return this.find('StateT').$fn.gets(function(state) {
+                            var value = { step: 0 };
+                            var monad = state.lift(value);
+                            var bound = state.of($run(monad)).bind(function(result) {
+                               return value.step ? ($cont.is(result) ? result.lift(bound) : $cont.of(result).lift(bound)) : result;
+                            });
+                            return $cont.of(monad.run()).lift(bound);
+                        }, this.find('Cont').$ctor);
+                    },
+                    $state: function(state) {
+                        return function() {
+                            return state;
+                        }
+                    },
+                    init: function(type, klass, sys) {
+                        this.root().$data(klass);
+                        var cont = this.find('Cont');
+                        var coyo = type.coyo.call(this);
+                        klass.prop('coyo', type.$coyo(coyo, type.io.call(this)));
+                        klass.prop('state', type.$state(type.state.call(this, cont, type.run)));
+                    }
+                };
+            }),
         // === Free === //
             (function() {
                 return {
                     klass: function Free(f, x, t) {
-                        this._id = this.ctor.$id = this.id();
-                        this._x  = this.$fn.ftor.is(f) ? (x ? f.lift(x) : f) : this.$fn.ftor.of(this.$fn.makeBind(this.$fn.coyo.is(f) ? f : this.$fn.coyo.of(f), {}, this), x);
-                        this._t  = t || this._t || '$enqueue';
+                        this.$$init(f, x, t);
                     },
                     ext: [
+                        (function $$init(f, x, t) {
+                            this._id = this.ctor.$id = this.id();
+                            this._x  = this.$fn.ftor.is(f) ? (x ? f.lift(x) : f) : this.$fn.ftor.of(this.$fn.makeBind(this.$fn.coyo.is(f) ? f : this.$fn.coyo.of(f), {}, this), x);
+                            this._t  = t || this._t || '$enqueue';
+                        }),
                         (function of(f, x) {
                             return this.constructor.of(f, x);
                         }),
@@ -2259,11 +2656,18 @@
                         })
                     ),
                     cont: function() {
-                        return this.extend(function ContF(mv, mf) {
-                            this.$super(mv, mf);
-                        }, {
-                            mf: unit
-                        })
+                        return this.parse({
+                            klass: function ContF(mv, mf) {
+                                this.$$init(mv, mf);
+                            },
+                            ext: {
+                                mf: unit
+                            },
+                            init: function(type, klass, sys) {
+                                klass.prop('of', this.prop('of').bind(this.proto()));
+                                klass.prop('constructor', this.$ctor);
+                            }
+                        });
                     },
                     kont: function(free) {
                         return function $_pure(k) {
@@ -2272,6 +2676,11 @@
                     },
                     map: function(f) {
                         return this.atomThread(this.wrap(f));
+                    },
+                    ftor: function() {
+                        return this.extend(function CoyoF(f, x) {
+                            this.$$init(f, x);
+                        });
                     },
                     init: function(type, klass, sys) {
                         var $st = klass.$store.root;
@@ -2282,79 +2691,11 @@
                         }).reduce(function(r, v) { r.prop(v.name, v.value); return r; }, klass).prop('$fn');
                         $fn.cast = klass.$ctor.cast;
                         $fn.coyo = klass.find('Coyoneda');
-                        $fn.ftor = klass.find('Coyoneda').extend('CoyoF');
+                        $fn.ftor = type.ftor.call(klass.find('Coyoneda'));
                         $fn.cont = type.cont.call(klass.find('Cont'));
                         $fn.kont = type.kont;
                         $fn.wrap = sys.get('utils.andThen')(sys.get('threads.makeThread'));
                         $fn.map  = sys.get('utils.compose')($fn.wrap)($fn.atomThread);
-                    }
-                };
-            }),
-        // === Cell === //
-            (function() {
-                return {
-                    klass: function Cell(f) {
-                        this.v = undefined, this.isDefined = false, this.queue = [];
-                        if (f) this.f = f;
-                        else if (!this.f) this.f = unit;
-                    },
-                    ext: [
-                        (function get(k) {
-                            if (this.isDefined) {
-                                //JavaScript as an Embedded DSL 429 430 G. Kossakowski et al.
-                                //k(this.v);
-                                this.enqueue(this.atom(k, this.v));
-                            }else {
-                                this.queue.push(k);
-                            }
-                        }),
-                        (function set(v) {
-                            if (this.isDefined) {
-                                throw "can’t set value twice"
-                            }else {
-                                this.run(this.f(v));
-                            }
-                        }),
-                        (function atom(k, v) {
-                            return function() {
-                                k(v); return true;
-                            }
-                        }),
-                        (function run(r) {
-                            if (this.isDefined) {
-                                throw "can’t set value twice"
-                            }else {
-                                this.v = r; this.isDefined = true,
-                                this.queue.splice(0).bind(function(f) {
-                                    f(r) //non-trivial spawn could be used here })
-                                }).run();
-                            }
-                        })
-                    ],
-                    attrs: [
-                        (function of(f) {
-                            return new this(f);
-                        })
-                    ],
-                    cont: function(cell) {
-                        return function(v) {
-                            cell.set(v);
-                        }
-                    },
-                    kont: function(klass) {
-                        return function(cell) {
-                            return klass.of(function $_pure(k) {
-                                cell.get(k);
-                            });
-                        }
-                    },
-                    init: function(type, klass, sys) {
-                        var fn = sys.root.get('sys.fn'), utils = sys.get('utils');
-                        klass.$ctor.map = utils.get('compose')(fn.$const)(utils.get('andThen')(klass.of));
-                        klass.prop('enqueue', sys.get('process.nextTick.enqueue'));
-                        klass.prop('cont', utils.get('call')(type.cont));
-                        this.find('Node').prop('cell', klass.of);
-                        klass.prop('kont', utils.get('call')(type.kont(this.find('Cont'))));
                     }
                 };
             }),
@@ -2403,13 +2744,13 @@
                     },
                     init: function(type, klass, sys) {
                         klass.of = type.of(klass.of);
-                        klass.prop('$cast', klass.prop('$$cast').bind(klass.proto()));
-                        klass.prop('$fn', {
+                        //klass.prop('$cast', klass.prop('$$cast').bind(klass.proto()));
+                        klass.prop('$fn', klass.prop('$fn').clone({
                             array: sys.get('async.array'),
                             series: sys.get('async.series'),
                             parallel: sys.get('async.parallel'),
-                            compose: klass.find('Compose').prop('$fn')
-                        });
+                            cast: sys.get('utils.andThen')(klass.prop('$cast'))
+                        }));
                     }
                 };
             }),
@@ -2569,8 +2910,8 @@
                 return {
                     name: 'Events',
                     parent: 'Node',
-                    klass: function Events(opts) {
-                        this.$super(opts || (opts = {}));
+                    klass: function Events(x) {
+                        this.$super(x || (x = {}));
                         this.initdata();
                         this.thread = this.set('thread', this.thread());
                     },
@@ -2861,7 +3202,7 @@
                                     }
                                     if (elem) {
                                         evt.currentTarget = elem;
-                                        evt.value = (elem.value || elem.name || elem.innerText || '').toLowerCase();
+                                        evt.value = (elem.value || elem.name || elem.getAttribute('data-value') || elem.innerText || '').toLowerCase();
                                         while (elem) {
                                             if (!element) break;
                                             else if (elem == element) break;
@@ -2981,7 +3322,8 @@
             (function() {
                 return {
                     parent: 'Node',
-                    klass: function Component(opts) {
+                    klass: function Component(x) {
+                        var opts = x || {};
                         if (!opts.parent) opts.parent = this._node;
                         this.$$init(opts);
                         this._events = (opts.parent._events || opts.parent.get('events')).child({ name: 'events', parent: this });
@@ -2999,6 +3341,9 @@
                     ext: [
                         { name: '_children', value: 'nodes' },
                         (function initialize() {}),
+                        (function io() {
+                            return (this._io || (this._io = this.klass('io').of(this.uid)));
+                        }),
                         (function parse(conf) {
                             return this.configure(conf);
                         }),
@@ -3022,15 +3367,15 @@
                         }),
                         (function attach(selector) {
                             return this.view().parent('$fn.attach').ap(selector ? (selector.unit ? selector.unit() : selector) : this.module().$el()).run().map(this.bin(function(comp, el) {
-                                var elem = el.parentElement;
-                                if (!comp.state('attach')) comp.observe('change', 'state.attach', 'onAttach');
+                                var elem = el.parentElement, hndl;
+                                if (!comp.state('attach')) hndl = comp.observe('change', 'state.attach', 'onAttach');
                                 comp.state('attach', elem.id || elem.className);
                                 return elem;
                             }));
                         }),
                         (function display(state) {
                             return this.maybe().map(function(comp) {
-                                return comp.view().parent('$fn.display').run(comp.state('display', state || ''));
+                                return comp.view().parent('$fn.display').run(comp.state('display', state || 'none'));
                             });
                         }),
                         (function update() {}),
@@ -3052,24 +3397,10 @@
                         (function eff(name, value) {
                             return value ? (this.$eff[name] = value) : (name ? this.$eff[name] : this.$eff);
                         }),
-                        (function make(cont) {
-                            this._cont || (this._cont = cont.bind(this.comp(function(klass) {
-                                var loca = sys.get('assets').get(this.deps('name'))
-                                        || sys.get('assets').get(this.origin(true), this.get('type'), this.get('type'));
-                                if (!loca.get('js')) loca.set('js', this.cell()).set(this.constructor);
-
-                                if (this.conf.events)  this.data({ events: this.conf.events });
-                                if (this.conf.proxy)   this.data({ proxy: this.conf.proxy });
-                                if (this.conf.control) this.control().update(this.conf.control);
-                                if (this.conf.data  && this.conf.data.events) this.data({ events: this.conf.data.events });
-                                return this.events();
-                            })));
-                            return this;
-                        }),
                         (function component() {
                             var args = [].slice.call(arguments);
                             var ref  = args.shift().split('.');
-                            var type = args.length ? args.join('.') : '';
+                            var type = args.length ? args.join('.') : ref.join('.');
                             var path = type ? type.split('.') : ref.split('.');
                             var name = ref.pop();
                             var prnt = ref.length ? this.ensure(ref) : this;
@@ -3078,7 +3409,7 @@
                                 var cmps = this.deps(path.length > 1 ? path.shift() : 'components');
                                 var code = path.length ? path.join('.') : name;
                                 if (cmps[code] && cmps[code].create) {
-                                    comp = prnt.set(name, cmps[code].create({ name: name, parent: prnt })); 
+                                    comp = cmps[code].create({ name: name, parent: prnt }); 
                                 }else if (cmps[code]) {
                                     comp = cmps[code];
                                 }else if (cmps['$'+code]) {
@@ -3105,6 +3436,40 @@
                                 return false;
                             }).first();
                         }),
+                        (function loca() {
+                            return sys.get('assets').lookup(this.origin(true)).lift(function(assets, comp) {
+                                return assets.lookup(comp.get('type')).orElse(assets.get(comp.cid())).chain(function(node) {
+                                    return node.get(comp.get('type'));
+                                });
+                            }).ap(this).unit();
+                        }),
+                        (function make(cont) {
+                            var loca = this.loca(), kont;
+                            var cell = loca.get('js');
+                            if (!cell) {
+                                cell = this.cell();
+                                cell.create = this.constructor.create;
+                                loca.set('js', cell).set(this.constructor);
+                                kont = cont;
+                            }else {
+                                kont = cell.kont();
+                            }
+                            this._cont || (this._cont = kont.bind(this.comp(function(klass) {
+                                if (this.conf.events)  this.data({ events: this.conf.events });
+                                if (this.conf.proxy)   this.data({ proxy: this.conf.proxy });
+                                if (this.conf.control) this.control().update(this.conf.control);
+                                if (this.conf.data  && this.conf.data.events) this.data({ events: this.conf.data.events });
+                                return this.events();
+                            })));
+                            return this;
+                        }),
+                        (function cont() {
+                            var cell = this._cell;
+                            if (!cell) {
+                                cell = this._cell = this.cell();
+                            }
+                            return cell.kont();
+                        }),
                         (function run(k) {
                             var cell = this._cell;
                             if (!cell) {
@@ -3117,13 +3482,6 @@
                                 else cell.set(this);
                             }
                             return this;
-                        }),
-                        (function cont() {
-                            var cell = this._cell;
-                            if (!cell) {
-                                cell = this._cell = this.cell();
-                            }
-                            return cell.kont();
                         }),
                         (function once(k) {
                             var cell = this._cell;
@@ -3182,8 +3540,6 @@
                         proto.$eff = {};
                         proto.cmpt = klass.$ctor;
                         proto.comp = root.get('utils.call1')(type.comp);
-                        proto.enqueue = root.get('process.nextTick.enqueue');
-                        proto.raf  = root.get('process.animFrame.enqueue');
                         proto.done = type.done(this.find('Cell'));
                     }
                 };
@@ -3192,10 +3548,36 @@
             (function() {
                 return {
                     parent: 'Component',
-                    klass: function Module(opts) {
-                        this.$super.call(this, opts);
+                    klass: function Module(x) {
+                        this.$super(x);
+
+                        var scope = this.get('root.config.modules', this.cid(), 'modules');
+                        if (scope) {
+                            var name = this.cid();
+                            var root = this.get('root.router');
+                            var rtrm = root.get(name);
+                            if (rtrm) {
+                                this.observe('change', 'router', 'router');
+                                this.set('router', rtrm);
+                            }else {
+                                root.observe('change', name, this.handler('router'));
+                            }
+                        }
                     },
                     ext: [
+                        (function router(evt, hndl) {
+                            var rtrm = evt.value, node;
+                            if (evt.action == 'create' && rtrm.cid() == this.cid()) {
+                                if (evt.uid == this.uid()) {
+                                    node = this;
+                                }else {
+                                    node = this.find(evt);
+                                    this.set('router', rtrm);
+                                }
+                                node.removeEventListener(hndl);
+                                if (!rtrm.started()) rtrm.startup();
+                            }
+                        }),
                         (function origin(plural) {
 
                             return plural ? 'modules' : 'module';
@@ -3218,10 +3600,11 @@
                         (function(display, show, make, add) {
                             return function routes(router) {
                                 return add(
-                                    router,
-                                        make(sys.eff('sys.loader.component'),
-                                            show(sys.eff('dom.elements.children').run(display('none'), '#root')('>'), this))
-                                );
+                                    make(sys.eff('sys.loader.component').init(),
+                                        show(sys.eff('dom.elements.children').run(display('none'), '#root')('>'), this))
+                                )(router, router.parent('config.modules').store(), [ 'modules' ]).run(function() {
+                                    router.startup();
+                                });
                             }
                         })(
                             (function(display) {
@@ -3250,20 +3633,28 @@
                                 }
                             }),
                             (function(loader, display) {
-                                return function(current) {
-                                    var mod = this.get('info', current, 'module');
-                                    loader.run([ 'modules', mod, mod ].join('/'), current).run(display);
+                                return function(scope) {
+                                    return function(current) {
+                                        var mod = this.get('info', current, 'module');
+                                        loader.run(scope.concat([ mod, mod ]).join('/'), current).run(display);
+                                        return true;
+                                    }
                                 }
                             }),
-                            (function(router, route) {
-                                router.parent('config.modules').store().bind(function(v, k, i, o) {
-                                    if (v.route) {
-                                        router.addRoute(v.route, route, { description: v.label, module: v.name || v.route }, v.alias);
-                                    }
-                                }).run(function() {
-                                    router.startup();
-                                });
-                                return router;
+                            (function(make) {
+                                return function $recur(router, modules, scope) {
+                                    return modules.bind(function(v, k, i, o) {
+                                        if (v.route) {
+                                            router.addRoute(v.route, make(scope), { description: v.label, module: v.name || v.route }, v.alias);
+                                        }
+                                        if (v.modules) {
+                                            return $recur(
+                                                router.getScopeRouter(v.route),
+                                                    (v.modules = o.of({ name: 'modules', parent: o }).parse(v.modules)),
+                                            scope.concat(router.get('info', v.route, 'module')));
+                                        }
+                                    });
+                                }
                             })
                         )
                     ],
@@ -3327,8 +3718,8 @@
             (function() {
                 return {
                     parent: 'Node',
-                    klass: function User(opts) {
-                        this.$super.call(this, opts);
+                    klass: function User(x) {
+                        this.$super(x);
                     },
                     ext: [
                         (function auth() {
@@ -3363,204 +3754,6 @@
                             return true;//sys.authopt || user.assert('state', 'on');
                         })
                     ]
-                };
-            }),
-        // === Context === //
-            (function() {
-                return {
-                    klass: function Context(opts, ref) {
-                        this.$super.call(this, opts, ref);
-                    },
-                    ext: [
-                        (function $$init(opts, ref) {
-                            //return this.parse(opts, ref);
-                        }),
-                        (function $values(keys, vals) {
-                            return { keys: keys, vals: vals && vals instanceof Array ? vals : ((typeof vals == 'object' ? keys.map(function(k, idx) {
-                                return vals[keys[idx]];
-                            }) : keys.slice(0))) };
-                        }),
-                        (function $keys() {
-                            var args = [].slice.call(arguments).flat();
-                            if (args.length == 1 && typeof args[0] == 'object')
-                                return this.$values(Object.keys(args.first()), args.shift());
-                            else
-                                return this.$values(args, args);
-                        }),
-                        (function reduce(a, f, r) {
-                            var vals  = this.$keys(a);
-                            vals.res  = r || {};
-                            if (!vals.link) vals.link = this.link('valueMap');
-                            return vals.keys.reduce(function(r, k, i) {
-                                return f(r, r.vals[i], k, r.vals) || r;
-                            }, vals);
-                        }),
-                        (function parse(/* data, link, store */) {
-                            return this.reduce([].slice.call(arguments), function(res, val, key) {
-                                if (key == 'parent') {
-                                    res.link.add('children', 'parent', store);
-                                }
-                                return res;
-                            }, this);
-                        }),
-                        (function valueMap(type, code, label, values) {
-                            this.link(type || 'valueMap').add(code, this.codes(values));
-                            this.link(type || 'valueMap').add(label,this.labels(values));
-                            return this.link;
-                        }),
-                        (function modelMap(curr, next, value) {
-                            this.valueMap('modelMap', 'current', 'next', value);
-                        })
-                    ]
-                };
-            }),
-        // === Transformer === //
-            (function() {
-                return {
-                    klass: function Transformer(monad) {
-                        this.id = this.id();
-                        this._m = monad || this._m;
-                        this._r = this._r;
-                    },
-                    ext: [
-                        (function of(monad) {
-                            return new this.constructor(monad);
-                        }),
-                        (function ask() {
-                            return this._r.ask();
-                        }),
-                        (function asks(fn) {
-                            return this._r.asks(fn);
-                        }),
-                        (function unit(ctx) {
-                            return this._r.unit(ctx);
-                        }),
-                        (function get(key) {
-                            return this._r.store(key);
-                        }),
-                        (function store(key, value) {
-                            return typeof value == 'undefined' ? (!key ? this.$context : this.$context.get(key)) : (this.$context.set(key, value));
-                        }),
-                        (function add(key, fn) {
-                            return this.$context.get(key) || this.$context.set(key, this.of(fn || this._f));
-                        }),
-                        (function put(key, value, returnValue) {
-                            var result;
-                            if (key && typeof value == 'object') {
-                                var store = this.$context.get(key) || this.$context.child(key);
-                                result = store.parse(value);
-                            }else if (key && typeof key == 'object') {
-                                result = this.$context.parse(key);
-                            }else if (key && value) {
-                                result = this.$context.set(key, value);
-                            }else if (key) {
-                                result = this.$context.get(key) || this.$context.child(key);
-                            }
-                            return returnValue ? result : this;
-                        }),
-                        (function reader() {
-                            return this._r;
-                        }),
-                        (function map(fn) {
-                            return this.of(this._m.map(fn));
-                        }),
-                        (function bind(k) {
-                            return this.$cont(k);
-                        }),
-                        (function lift(x) {
-                            return this.of(this._m.of(x));
-                        }),
-                        (function test(value) {
-                            if (!value) return {};
-                            else if (this.ctor.root().is(value)) return { type: true };
-                            return {
-                                'reader' : this._r.is(value),
-                                'monad'  : this._m.is(value),
-                                'trans'  : this.is(value)
-                            };
-                        }),
-                        (function result(ctx, res) {
-                            if (!res) {
-                                return this;
-                            }else if (res.type) {
-                                return this;
-                            }else {
-                                var test = this.test(res);
-                                if (test.reader) return res;
-                                else if (test.monad) return this;
-                            }
-                            return this._r.unit(res);
-                        }),
-                        (function $result(t, k, c) {
-                            return function(r) {
-                                return k.call(t._m, t.result(c || t, r));
-                            }
-                        }),
-                        (function run(k) {
-                            return this._r.bind(this.$result(this, k || unit, this._r), this);
-                        })
-                    ],
-                    attrs: [
-                        (function of(monad) {
-                            return new this(monad);
-                        }),
-                        (function initial(reader, monad) {
-                            var name = reader.name || reader._cid || reader.constructor.name;
-                            var extT = this.ctor.extend(name + 'T', { _r: reader });
-                            if (monad) extT.prop('_m', monad);
-                            return extT.of();
-                        })
-                    ],
-                    initial: function(reader, monad) {
-                        return this.$ctor.initial(reader, monad);
-                    },
-                    extendCont: function() {
-                        return this.klass.extend(function ContT(trans) {
-                            this.$super.call(this, trans);
-                        }, {
-                            mv: function $_pure(k) {
-                                return trans.run(trans.$kont(k));
-                            },
-                            mf: this.mf
-                        })
-                    },
-                    $_cont: function(v) {
-                        return function $_pure(k) {
-                            return v.lift(k)
-                        }
-                    },
-                    makeCont: function(cont) {
-                        return function(k) {
-                            return cont.of(this).bind(this.$kont(k));
-                        }
-                    },
-                    makeHandler: (function $kont(w, h) {
-                        return function kont(k) {
-                            return w(h, k, this);
-                        }
-                    })(
-                        (function wrapper(h, k, t) {
-                            return function() {
-                                return h(t, this)(k.call(this, [].slice.call(arguments)));
-                            }
-                        }),
-                        (function handler(t, c) {
-                            return function(result) {
-                                return t.result(c, result);
-                            }
-                        })
-                    ),
-                    init: function(type, klass, sys) {
-                        klass.constructor.prototype.initial = type.initial;
-                        klass.prop('$of', klass.$ctor.of.bind(klass.$ctor));
-                        klass.prop('$cont', type.makeCont(type.extendCont.call({ klass: this.find('Cont'), mf: type.$_cont })));
-                        klass.prop('$kont', type.makeHandler);
-
-                        klass.prop('$$kont', klass.$store.node('$$cache').node('$$kont'));
-                        klass.prop('$context', klass.root().get().child('context', klass.find('Context').$ctor));
-
-                        klass.prop('$root', klass.initial(klass.find('Reader').fromConstructor('fromStore', sys.get()), klass.find('Coyoneda')));
-                    }
                 };
             })
     ),

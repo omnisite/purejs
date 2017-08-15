@@ -157,6 +157,8 @@ define(function() {
 
 					button: this.eff('dom.elements.button').init(),
 
+					alert: this.eff('dom.elements.alert').init(),
+
 					html: this.eff('dom.elements.html').init(),
 
 					query: this.eff('dom.elements.query').init(),
@@ -205,22 +207,51 @@ define(function() {
 					opts || (opts = {});
 					this.$super.call(this.parent('view', this), opts);
 
-					this._tag  = this.eff('make').run(this.parent('data.tmpl.tag') || 'div').run();
-					this._el   = this.parent('$fn.el', this._tag.of(this.attr()).lift(function(value, base) {
+					this._rules = this.klass('Coyoneda').of(function(rules) {
+						return function(monad) {
+							return function(selector) {
+								return monad.klass('Functor').of(rules).ap(monad).map(function(rule) {
+									return rule(selector);
+								}).toMaybe();
+							}
+						}
+					}, this.set('css', [])).lift(sys.eff('dom.elements.rules').init());
+					this._tag   = this.eff('make').run(this.parent('data.tmpl.tag') || 'div').run();
+					this._el    = this.parent('$fn.el', this._tag.of(this.attr()).lift(function(value, base) {
 						return base.of(base.run(value));
 					}).run(this._tag));
 
 					this._body || (this.ctor.prop('_body', this.dom.run(document.body)));
 					this._dom  = this.set('dom', opts.dom || this.dom.run(this._el.run()));
-					this._item = this.parent('$fn').parse(this.item(this._el));
+					this._item = this.parent('$fn', this.item(this._el));
 					this._elms = this.eff('children').nest().lift(function(ch, fn) {
 						return this.fx(function(effect, selector) {
 							return ch.run(effect)(fn.ap(selector));
 						});
 					}).run(this.parent('$fn.find'));
 
-					if (this.parent().deps) this.style();
+					if (this.parent().deps) this.css();
 				},
+ 
+				rules: function(selector) {
+					return this._rules.run(selector);
+				},
+
+				style: function() {
+					return (this._style || (this._style = this.$el().lift(function(el, css) {
+						return this.fx(function(selector) {
+							return this.fx(css.run(el.closest(selector || '*')));
+						}).map(function(css) {
+					    	return css.fx(function(props) {
+					    		return (props instanceof Array ? props : [ props ]).reduce(function(r, k) {
+					    			r[k] = css.run(k);
+					    			return r;
+					    		}, {});
+					    	}).toMaybe();
+					    });
+					}).run(this.eff('css'))));
+				},
+
 				elms: function(effect, selector) {
 					return this._elms.run(effect, selector);
 				},
@@ -241,12 +272,20 @@ define(function() {
 						return item;
 					})(this, {
 						el:      el,
+						view: 	 this,
 						find:    this.eff('find').run(el.run()).toIO(),
 						attrs:   this.eff('attrs').ap(el).pure(),
 						append:  this.eff('append').ap(el).pure(),
 						attach:  this.eff('attach').ap(el).pure().ap(this.eff('query')),
 						empty:   this.eff('empty').ap(el),
-						display: this.eff('display').ap(el).pure()
+						display: this.eff('display').ap(el).pure(),
+						query:   el.nest().lift(function(elem, query) {
+							return this.fx(function(selector) {
+								return elem.map(function(el) {
+									return query.run(selector, el).unit();
+								}).run();
+							});
+						}).run(this.eff('query'))
 					});
 				},
 
@@ -276,29 +315,28 @@ define(function() {
 					return this.get('attr') || this.set('attr', sys.get('utils.extend')({ id: this.parent().nid() }, this.tmpl('attr')));
 				},
 
-				style: function(name) {
+				css: function(name) {
 					return this.lift(function(v, t) {
 						return t.bind(function(name) {
-							return v.eff('style').run(v.render(name).run({}));
+							return v.push('css', v.eff('style').map(function(link) {
+								return link.sheet;
+							}).to('io').run(v.render(name).run({}), v.uid()));
 						}).run();
 					}).ap(this.maybe().map(function(view) {
-						return view.parent().deps('templates');
-					}).map(function(tmpls) {
-						return tmpls.bind(function(o, v, k) {
-							if (v && v.isStore) {
-	                            var keys = sys.get('link.idx.valueMap').run('scripts', 'style.' + k, true);
-								return keys.filter(function(x) {
-									return (!o[x] && (o[x] = 1)) || !o[x]++;
-								});
-							}else {
-								return v;
-							}
-						}).flatten();
+						var c = view.parent().ctor, r = [], p, a;
+						while (c) {
+							r.push.apply(r, (sys.get('link.idx.valueMap').run('scripts', 'style.' + c.name(), true) || []).filter(function(k) {
+								return r.indexOf(k) < 0;
+							}));
+							if (c.level() > 3) c = c.parent();
+							else break;
+						}
+						return r;
 					}));
 				},
 
 				type: function() {
-					return (this._tmpl || (this._tmpl = this.parent().deps('templates.' + this.parent('type'))));
+					return (this._tmpl || (this._tmpl = this.parent().deps('templates.tmpl')));
 				},
 
 				tmpl: function(path) {
@@ -391,7 +429,9 @@ define(function() {
 							if (rel) {
 								return this.evts().run(evt).ap(this.$el('[data-bind-ext="' + evt.ref.split('.').slice(-rel).join('.') + '"] [data-bind-name="' + evt.target + '"]'));
 							}else {
-								return this.evts().run(evt).ap(this.$el('[data-bind-name="' + evt.target + '"]'));
+								return this.evts().run(evt).ap(this.parent('$fn.query').run('[data-bind-name="' + evt.target + '"]'));
+								//return this.dbpt().run('[data-bind-name="' + evt.target + '"]').ap().run();
+//								return this.evts().run(evt).ap(this.$el('[data-bind-name="' + evt.target + '"]'));
 							}
 						}
 					}

@@ -8,7 +8,7 @@ define(function() {
 
 			core: [ 'pure' ],
 
-			scripts: [ 'bezier' ]
+			scripts: [ 'bezier', 'doT' ]
 
 		}
 
@@ -19,6 +19,7 @@ define(function() {
 			init: function(deps) {
                 return deps('core.pure')(function(sys) {
                     return function(dom) {
+                        var doT    = sys.eff('sys.eff.parse').run(dom.doT.call(dom.deps('scripts.doT')));
                         var eff    = sys.eff('sys.eff.parse').run(dom.eff);
                         var calc   = eff.ensure('dom.calc');
                         var node   = calc.node('bezier').parse(dom.easing);
@@ -29,6 +30,35 @@ define(function() {
                     }
                 })(this);
 			},
+
+            doT: function() {
+                return {
+                    type: 'IO',
+                    path: 'dom',
+                    elements: [
+                        (function($doT) {
+                            return function template(str, attr) {
+                                return $doT.compile(str, attr);
+                            }
+                        })(this)
+                    ],
+                    factory: {
+                        elements: {
+                            defaults: {
+                                method: 'just',
+                                just: 'IO',
+                                lift: 'Maybe',
+                                bind: 'Cont'
+                            },
+                            template: {
+                                method: 'just',
+                                bind: 'IO',
+                                lift: 'Maybe'
+                            }
+                        }
+                    }
+                };
+            },
 
             easing: {
                 'ease-in-out'      : [ 0.420, 0.000, 0.580, 1.000 ],
@@ -75,8 +105,8 @@ define(function() {
                         })(
                             (function() {
                                 return this.klass('IO').parse({
-                                    klass: function Anim(f) {
-                                        this.$super.call(this, f);
+                                    klass: function Anim(x) {
+                                        this.$super(x);
                                     },
                                     ext: {
                                         itid: (function itid(cnt) {
@@ -197,10 +227,10 @@ define(function() {
                                             return function $_pure(continuation) {
                                                 return thread.run(args.map(function(v) {
                                                     if (v.klass) {
-                                                        v.elem.classList.remove('anim-done');
                                                         if (v.$from == v.from) {
                                                             v.elem.classList.add('anim-start');
                                                         }
+                                                        v.elem.classList.remove('anim-done');
                                                     }
                                                     return v;
                                                 }), continuation);
@@ -210,6 +240,14 @@ define(function() {
                                             return function() {
                                                 return anim.createRun(thread.lift(), [].slice.call(arguments).flat().map(makeItem));
                                             }
+                                        },
+                                        createToggle: function(msdef) {
+                                            return this.nest().lift(function(anim, ms) {
+                                                anim.run(function() {
+                                                    anim.delay(ms || msdef || 300);
+                                                });
+                                                return anim;
+                                            });
                                         }
                                     },
                                     init: function(type, klass, sys) {
@@ -271,6 +309,8 @@ define(function() {
                                         if (val.klass) {
                                             val.elem.classList.remove('anim-running');
                                             val.elem.classList.add('anim-done');
+                                            if (val.$from != val.from) val.elem.classList.add('anim-open');
+                                            else val.elem.classList.remove('anim-open');
                                         }
                                         return false;
                                     };
@@ -323,21 +363,40 @@ define(function() {
                                 return body.removeChild(body.firstChild);
                             }
                         }),
-                        (function style(str) {
+                        (function style(str, ref) {
                             if (!str) return;
                             var idtfr = str.substr(0,50).replace(/[^A-Za-z\-]/g, '');
                             var head  = document.getElementsByTagName('head').item(0);
-                            var check = head.querySelector('#'+idtfr);
-                            if (!check) {
-                                var style = document.createElement('style');
-                                style.id = idtfr; style.type = 'text/css'; style.innerHTML = str; head.appendChild(style);
+                            var style = head.querySelector('#'+idtfr);
+                            if (!style) {
+                                style = document.createElement('style');
+                                style.id = idtfr; style.type = 'text/css';
+                                style.innerHTML = str; head.appendChild(style);
+                                if (ref) style.setAttribute('data-ref', ref);
                             }
+                            return style;
                         }),
                         (function css(elem) {
                             var style = self.getComputedStyle(elem);
                             return function(prop) {
                                 var value = style[prop];
                                 return parseInt(value.replace(/[^0-9\.]/g, '')||0);
+                            }
+                        }),
+                        (function rules(sheet) {
+                            return function(selector, index) {
+                                var rule = [].slice.call(sheet.rules).find(function(rule) {
+                                    return rule.selectorText == selector;
+                                });
+                                if (!rule) {
+                                    if('insertRule' in sheet) {
+                                        rule = sheet.rules.item(sheet.insertRule(selector + '{}', index || 0));
+                                    }
+                                    else if('addRule' in sheet) {
+                                        rule = sheet.addRule(selector, rules, index || 0);
+                                    }
+                                }
+                                return rule;
                             }
                         }),
                         (function size() {
@@ -354,14 +413,84 @@ define(function() {
                                 return res;
                             }
                         }),
+                        (function(run, make) {
+                            return function styleinfo() {
+                                return run(make.call({
+                                    css: sys.eff('dom.elements.css').init(),
+                                    find: sys.eff('dom.elements.find').init('just')
+                                }));
+                            }
+                        })(
+                            (function styleinfo(base) {
+                                return function(elem) {
+                                    return base.ap(elem);
+                                }
+                            }),
+                            (function() {
+                                return this.find.nest().lift(function(find, css) {
+                                    return this.fx(function(elem) {
+                                        return find.ap(elem).to('io').run(css);
+                                    });
+                                }).run(this.css);
+                            })
+                        ),
+                        (function element(tagname, wrap, fix, run) {
+                            var base = sys.eff('dom.elements.make').run(tagname).run();
+                            var make = sys.klass('IO').of(fix).lift(run);
+                            var attr = sys.eff('dom.elements.attrs').init('just');
+                            var anim = sys.eff('dom.elements.animate').bind(function(a) {
+                                return a.fx(a.run({ duration: 150, easing: 'swing', toggle: true, klass: true, prop: 'opacity', from: 0, to: 1, value: 'from' })).map(a.constructor.$pure);
+                            });
+                            return wrap(base.nest().lift(function(i, o) {
+                                var v = o.attrs, p = o.props;
+                                var $el = v.$el = i.run(v);
+                                v.$set  = attr.to('io').run($el).ap(make.map(function(x) {
+                                    return x.attrs;
+                                }));
+                                if (p.anim) v.$anim = anim.run($el);
+                                if (p.toggle) v.$toggle = v.$anim.createToggle(p.toggle);
+                                if (p.run) {
+                                    if (v[p.run] && v[p.run].run) v[p.run].run();
+                                    p.run = '';
+                                }
+                                return v;
+                            }).ap(make), make.kid);
+                        }),
+                        (function alert(wrap, fix, run) {
+                            return function alert() {
+                                return sys.eff('dom.elements.element').run('div', wrap, fix, run);
+                            }
+                        })(
+                            (function(io, id) {
+                                return function alert(attrs) {
+                                    attrs || (attrs = {});
+                                    if (!attrs.uid) attrs.uid = id();
+                                    return io.run(attrs);
+                                }
+                            }),
+                            (function(value) {
+                                if (!value) return 'alert';
+                                else if (value.indexOf('alert') < 0) value = 'alert alert-'+value;
+                                return value.toLowerCase().replace(/[^0-9\sa-z]/g, '-').replace(/-{2,}/g, '-');
+                            }),
+                            (function(fix, vals) {
+                                var value  = typeof vals == 'object' ? vals : { type: vals };
+                                var attrs  = { 'className' : fix(value.type || value['class']) };
+                                var props  = {};
+                                attrs.id   = 'AL' + vals.uid;
+                                attrs.text = value.text || value.innerText || value.innerHTML || value.name || value.value || '';
+                                if (value.value) attrs.value = value.value;
+                                if (value.style) attrs.style = value.style === true ? 'opacity: 1' : value.style;
+                                else if (value.style === false) attrs.style = 'opacity: 0';
+                                if (value.anim || value.toggle) props.anim = value.anim || true;
+                                if (value.toggle) props.toggle = value.toggle;
+                                if (value.run) props.run = value.run;
+                                return { attrs: attrs, props: props };
+                            })
+                        ),
                         (function button(wrap, fix, run) {
                             return function button() {
-                                var base = sys.eff('dom.elements.make').run('button').run();
-                                var make = sys.klass('IO').of(fix).lift(run);
-                                return wrap(base.nest().lift(function(i, v) {
-                                    v.$el = i.run(v);
-                                    return v;
-                                }).ap(make), make.kid);
+                                return sys.eff('dom.elements.element').run('button', wrap, fix, run);
                             }
                         })(
                             (function(io, id) {
@@ -377,11 +506,13 @@ define(function() {
                                 return value.toLowerCase().replace(/[^0-9a-z]/g, '-').replace(/-{2,}/g, '-');
                             }),
                             (function(fix, value) {
-                                var fixed   = { 'class' : 'btn btn-default' };
-                                fixed.text  = value.text || value.innerText || value.innerHTML || value.name || value.value;
-                                fixed.name  = fix(value.name || value.value || fixed.text);
-                                fixed.value = value.value || fixed.name;
-                                return fixed;
+                                var attrs   = { 'class' : 'btn btn-default' };
+                                var props   = {};
+                                attrs.text  = value.text || value.innerText || value.innerHTML || value.name || value.value;
+                                attrs.name  = fix(value.name || value.value || attrs.text);
+                                attrs.value = value.value || attrs.name;
+                                if (value.style) attrs.style = value.style;
+                                return { attrs: attrs, props: props };
                             })
                         ),
                         (function updater(map) {
@@ -558,17 +689,14 @@ define(function() {
                     ],
                     factory: {
                         elements: {
-                            defaults: {
-                                method: 'just',
-                                just: 'IO',
-                                lift: 'Maybe',
-                                bind: 'Cont'
-                            },
                             make: {
                                 args: [ 'utils' ],
                                 method: 'bind',
                                 bind: 'IO',
                                 lift: 'Maybe'
+                            },
+                            alert: {
+                                args: []
                             },
                             button: {
                                 args: []
@@ -595,6 +723,9 @@ define(function() {
                             size: {
                                 args: [],
                                 method: 'just'
+                            },
+                            styleinfo: {
+                                args: []
                             },
                             animate: {
                                 args: [ 'utils' ],

@@ -83,7 +83,7 @@ define(function() {
 					},
 					search: function() {
 						var comp  = this.root();
-						var str   = comp.get('form.data.main.find') || '';
+						var str   = comp.get('form.data.main.str') || '';
 						var tabl  = comp.deps('components.table');
 						var store = sys.get().store();
 						var rndr  = comp.get('rndr') || comp.set('rndr', tabl.view().tmpl('main', 'body', 'column'));
@@ -100,8 +100,8 @@ define(function() {
 			},
 
 			fields: {
-				find: { type: 'string', elem: { tag: 'input',  label: 'Find', type: 'text',  placeholder: 'type your search here' } },
-				run:  { type: 'action', elem: { tag: 'button', label: 'Run',  type: 'button' } }
+				str: { type: 'string', elem: { tag: 'input',  label: 'Find', type: 'text',  placeholder: 'type your search here' } },
+				run: { type: 'action', elem: { tag: 'button', label: 'Run',  type: 'button' } }
 			},
 
 			table: {

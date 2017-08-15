@@ -29,7 +29,8 @@ define(function() {
 				main: {
 					anim: function(opts) {
 						var data = this.root('data');
-						var base = sys.eff('dom.elements.animate').run().run({
+						var anim = sys.eff('dom.elements.animate').run();
+						var base = anim.run({
 							duration: 40, easing: 'swing', toggle: true
 						});
 						return this.run(opts || {}).chain(function(a) {
@@ -39,8 +40,8 @@ define(function() {
 							);
 							var anim2 = cntrl.of(base(a.shift())).times(2);
 							var anim3 = cntrl.of(base(a.shift())).times(10);
-							var anim4 = cntrl.of(base(a.shift())).times(3);
-							return data.set('anim', anim1.delay(500).then(anim2.mv, anim3.mv, anim4.mv));
+							var anim4 = cntrl.of(base(a.shift()));
+							return data.set('anim', anim1.delay(500).then(anim2.mv, anim3.mv, anim4.times(3).mv).delay(1500).then(anim4.times(2)));
 						});
 					},
 					run: function(o) {

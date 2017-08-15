@@ -2,7 +2,7 @@
 
     define(function() {
 
-        return effects([].slice.call(arguments).shift()).attr('name', 'core.effect');
+        return effects(sys).attr('name', 'core.effect');
 
     });
 
@@ -80,7 +80,7 @@
                     var args = Array.prototype.slice.call(arguments);
                     var func = args.shift();
                     var inst = this.init.apply(this, args);
-                    return inst.bind ? inst.bind(func) : func(inst);          
+                    return inst.bind ? inst.bind(func) : func(inst);
                 };
                 Instruction.prototype.ap = function() {
                     var args  = Array.prototype.slice.call(arguments);
@@ -90,8 +90,10 @@
                 };
                 Instruction.prototype.lift = function() {
                     var args = Array.prototype.slice.call(arguments);
-                    args.unshift('lift');
-                    return this.init.apply(this, args);
+                    var func = args.shift();
+                    var inst = this.init.apply(this, args);
+                    if (inst.nest) inst = inst.nest();
+                    return inst.lift ? inst.lift(func) : func(inst);
                 };
                 Instruction.prototype.just = function() {
                     var args = Array.prototype.slice.call(arguments);
@@ -132,28 +134,10 @@
                         return runInit(type, node.get(action), result);
                     }).unit();
                 };
-                Handler.prototype.eff = this.klass('io').parse({
-                    klass: function EffIO(x) {
-                        this.$super(x);
-                    },
-                    $$init: function(eff) {
-                        return function(x) {
-                            this.unsafePerformIO = eff(x());
-                        }
-                    },
-                    eff: function(x) {
-                        return function() {
-                            var eff = sys.get(x);
-                            return eff.run.apply(eff, [].slice.call(arguments));
-                        }
-                    },
-                    init: function(type, klass, sys) {
-                        var io = klass.find('io').proto();
-                        klass.prop('$$init', type.$$init(type.eff));;
-                        klass.prop('fx', io.fx.bind(io));
-                        klass.prop('of', io.fx.bind(io));
-                    }
-
+                Handler.prototype.eff = this.klass('io').make(function EffIO(x) {
+                    this.$super(x);
+                }, function(x) {
+                    return sys.eff(x.replace(/eff\./, '')).init();
                 });
                 Handler.of = function(env) {
                     return new Handler(env);
@@ -176,9 +160,9 @@
 
             (function fn(base) {
                 function cast(type) {
-                    var ctor = type.is ? type : sys.klass(type).$ctor;
+                    var ctor = type.is ? type : sys.klass(type);
                     return function(value) {
-                        return value && value instanceof ctor ? value : ctor.pure(value);
+                        return ctor.test(value) ? value : ctor.$ctor.pure(value);// && value instanceof ctor.$ctor ? value : ctor.pure(value);
                     }
                 };
                 function just(type, value, fn) {
@@ -219,7 +203,7 @@
                 function utils(monad, args) {
                     return function $_utils() {
                         return function $_fn() {
-                            var args = [].slice.apply(arguments);
+                            var args = [].slice.call(arguments);
                             var prop = args.shift();
                             return monad.$fn(value);
                         }
@@ -264,8 +248,8 @@
 
             (function CreateEnv() {
                 return this.sys.klass('node').parse({
-                    klass: function Env(opts) {
-                        this.$super.call(this, opts);
+                    klass: function Env(x) {
+                        this.$super(x);
                         this._handler = this.Handler.of(this);
                         this._cache   = {};
                     },
@@ -286,13 +270,19 @@
                         }),
                         (function runDefs(env, defs) {
                             return defs.bind(function(eff) {
-                                return env.addOperation(env.extractDef(eff));
+                                return env.addOperation(env.extractDef(eff), true);
                             });
                         }),
-                        (function addOperation(op) {
+                        (function addOperation(op, lazy) {
                             var path = op.path;
                             var node = this.ensure(path);
-                            return node.parse(op, true);
+                            return lazy ? this.klass('Obj').of(op).bind(function(x, v, k, i, o, l, a) {
+                                if (typeof v == 'object') {
+                                    node.child(k).parse(v, true);
+                                }else {
+                                    node.set(k, v);
+                                }
+                            }).collect() : node.parse(op, true);
                         }),
                         (function runOperation(path) {
                             return this.getOperation(path).chain(unit);
@@ -361,6 +351,7 @@
                         }),
                         (function getOperation(location, init) {
                             if (location.indexOf('.') < 0) location = 'sys.eff.' + location;
+                            else if (location.first() == 'effects') location = location.parts(1);
                             return this._cache[location] || this.makeOperation(location, init);
                         })
                     ],
@@ -415,13 +406,33 @@
                         type: 'IO',
                         path: 'dom',
                         calc: [
-                            (function getSize(element) {
+                            (function size(element) {
                                 return (typeof element == 'string' ? sys.get('eff.dom.elements.query').run(element) : sys.klass('Maybe').of(element)).chain(function(el) {
                                     return [ el.clientWidth, el.clientHeight ];
                                 });
                             }),
+                            (function position(el) {
+                                var xPos = 0;
+                                var yPos = 0;
+
+                                while (el) {
+                                    if (el.tagName == "BODY") {
+                                        var xScroll = el.scrollLeft || document.documentElement.scrollLeft;
+                                        var yScroll = el.scrollTop || document.documentElement.scrollTop;
+
+                                        xPos += (el.offsetLeft - xScroll + el.clientLeft);
+                                        yPos += (el.offsetTop - yScroll + el.clientTop);
+                                    }else {
+                                        xPos += (el.offsetLeft - el.scrollLeft + el.clientLeft);
+                                        yPos += (el.offsetTop - el.scrollTop + el.clientTop);
+                                    }
+
+                                    el = el.offsetParent;
+                                }
+                                return { x: xPos, y: yPos };
+                            }),
                             (function viewport() {
-                                return sys.get('sys.eff')('dom.calc.getSize').run(document.body);
+                                return sys.get('sys.eff')('dom.calc.size').run(document.body);
                             })
                         ],
                         factory: {
@@ -479,8 +490,11 @@
                                                     case 'radio':
                                                         if (querying) {
                                                             return this.getValue(element);
-                                                        }else {
-                                                            this.setValue(element, value);
+                                                        }else if (element.value == value) {
+                                                            element.checked = true;
+                                                            return this;
+                                                        }else if (element.checked) {
+                                                            element.checked = false;
                                                             return this;
                                                         }
                                                         break;
@@ -538,6 +552,10 @@
                                             return e ? (e.setAttribute ? (e.setAttribute(a, v) || v) : (e[a] = v)) : null;
                                         },
 
+                                        attr: function(e, a, v) {
+                                            return v ? this.setAttr(e, a, v) : this.getAttr(e, a);
+                                        },
+
                                         getValue: function(e) {
                                             return this.getAttr(e, 'value') || e.value;
                                         },
@@ -575,7 +593,7 @@
                             })(
                                 (function($object, $folder, $attr) {
                                     return function attrs(elem, object) {
-                                        $object(object).fold($folder, {
+                                        $object(object || {}).fold($folder, {
                                             elem: elem, attrs: attrs, attr: $attr
                                         });
                                         return elem;
@@ -595,6 +613,8 @@
                                         r.elem['innerText'] = v;
                                     }else if (k == 'innerHTML') {
                                         r.elem[k] = v;
+                                    }else if (k == 'className') {
+                                        r.elem.className = v;
                                     }else if (k == 'class') {
                                         r.elem.classList.add.apply(r.elem.classList, v.split(' '));
                                     }else if (r.elem.setAttribute) {
@@ -607,6 +627,7 @@
                             ),
                             (function query(selector, elem) {
                                 elem || (elem = document);
+                                if (typeof elem == 'string') elem = document.querySelector(elem);
                                 if (!selector) {
                                     return [];
                                 }else if (selector instanceof Element) {
@@ -665,7 +686,7 @@
                             ),
                             (function display(elem) {
                                 return function(display) {
-                                    elem.style.display = typeof display != 'undefined' ? display : (elem.style.display != 'none' ? 'none' : '');
+                                    elem.style.display = typeof display != 'undefined' ? (display === false || display == 'none' ? 'none' : 'block') : (elem.style.display != 'none' ? 'none' : '');
                                     return elem;
                                 }
                             }),
@@ -866,46 +887,45 @@
                                 }),
                                 (function makeOf(eff, obj, bind, set, wrap) {
                                     return function(def, run, res) {
-                                        return obj.of(def).bind(bind(eff, set, res)).cont().bind(res.konst(eff.pure(res))).bind(wrap(run));
+                                        def.deps.name = def.name;
+                                        return obj.of(def.deps).bind(bind(eff, set, res)).cont().bind(wrap(run));
                                     }
                                 }),
                                 (function makeBind(eff, set, r) {
-                                    return function(x, v, k, i, o, l) {
-                                        if (l > 1) {
-                                            return v;
+                                    return function(x, v, k, i, o, l, a) {
+                                        if (l > 0) {
+                                            return typeof o == 'string' ? (a.parent = v) : (x[o[k]] = v);
                                         }else if (k == 'name') {
-                                            r[k] = v;
+                                            x[k] = v;
                                         }else if (k.match(/(parent|components|modules|types|system)/)) {
                                             var val = v instanceof Array ? v : [ v ];
                                             var loc = k == 'parent' ? 'components' : k;
-                                            var res = k == 'parent' ? r : (r[k] = r.of({}));
                                             return val.map(function(def, type) {
                                                 var args = def instanceof Array ? def : [ def ];
                                                 var name = args.shift(), opts = args.length ? args.shift() : { js: true };
                                                 var code = name.replace('.', '/');
                                                 var path = loc + '/' + (code.indexOf('/') > 0 ? code : (code + '/' + code));
-                                                var attr = k == 'parent' ? k : name;
-                                                return res[attr] = eff.components.run(path).bind(set(res, attr)).cont();
+                                                return eff.components.run(path).cont();
                                             });
                                         }else if (k == 'core' || k == 'helpers' || k == 'config') {
-                                            var res = r[k] = r.of({});
                                             return v.map(function(name) {
-                                                return name == 'pure' ? sys.store('sys.$fn.pure')((res[name] = sys.pure()))
-                                                    : eff.components.run(k + '/' + name).bind(set(res, name)).cont();
+                                                return name == 'pure' ? sys.store('sys.$fn.pure')(sys.pure())
+                                                    : eff.components.run(k + '/' + name).cont();
                                             });
                                         }else if (k == 'scripts' || k == 'json' || k == 'css' || k == 'styles' || k == 'templates') {
-                                            var res = r[k] = r.of({});
                                             return v.map(function(name) {
                                                 var path = name.split('/'), cont;
                                                 if (k == 'templates' || k == 'css' || k == 'json') {
-                                                    if (k == 'css' || k == 'json' || (name == 'tmpl' && r.name && (name = r.name))) path = [ 'components', name, name ];
+                                                    if (k == 'css' && o.name.indexOf('.') > 0) path = o.name.split('.').append(name);
+                                                    else if (k == 'css' || k == 'json' || (name == 'tmpl' && o.name && (name = o.name)))
+                                                        path = [ 'components', name, name ];
                                                     else if (path.length < 2) path.unshift('templates');
                                                     path.push(path.pop()+(k == 'templates' ? '.tmpl' : ('.' + k)));
                                                 }else {
                                                     if (path.length < 2) path.unshift('libs');
                                                     if (path.length < 3) path.push(name);
                                                 }
-                                                return (eff[k] || eff['components']).run(path.join('/')).bind(set(res, name)).cont();
+                                                return (eff[k] || eff['components']).run(path.join('/')).cont();
                                             });
                                         }
                                         return v;
@@ -913,11 +933,13 @@
                                 }),
                                 (function makeSetRes(res, name) {
                                     return function(result) {
-                                        return res[name] = result;
+                                        return function $_pure(k) {
+                                            return k((res[name] = result));
+                                        }
                                     }
                                 }),
                                 (function(make, run, wrap, parent, result) {
-                                    return wrap(parent, result(make(sys.get('utils.get'), run, sys.klass('Maybe').of)), sys.klass('Cont'), sys.klass('Value'));
+                                    return wrap(parent, result, make(sys.get('utils.get'), run, sys.klass('Maybe').of), sys.klass('Cont'), sys.klass('Value'));
                                 })(
                                     (function make(get, run, sys) {
                                         return function(deps) {
@@ -936,17 +958,17 @@
                                             if (base) return type(base[name] || base[name.replace('-', '.')] || base[(name.indexOf('$') < 0 ? ('$' + name) : name.replace('$', ''))]);
                                         }
                                     }),
-                                    (function wrap(parent, result, cont, value) {
+                                    (function wrap(parent, result, wrap, cont, value) {
                                         return function makeResult(run) {
                                             return function(deps) {
                                                 if (deps.parent) {
                                                     if (cont.is(deps.parent) || value.is(deps.parent)) {
-                                                        return deps.parent.bind(parent(result(run), deps));
+                                                        return deps.parent.bind(parent(result(wrap, run), deps));
                                                     }else {
-                                                        return parent(result(run), deps)(deps.parent)(unit);
+                                                        return parent(result(wrap, run), deps)(deps.parent)(unit);
                                                     }
                                                 }else {
-                                                    return result(run)(deps);
+                                                    return result(wrap, run)(deps);
                                                 }
                                             }
                                         }
@@ -957,10 +979,10 @@
                                                 var prtdeps = parent.ctor.prop('deps')();
                                                 deps.parent = parent;
                                                 deps.extend(prtdeps, true);
-                                                if (deps.templates && deps.templates[deps.name]) {
-                                                    if (prtdeps.templates && prtdeps.templates[prtdeps.name]) {
-                                                        var tmpl = deps.templates[deps.name];
-                                                        prtdeps.templates[prtdeps.name].map(function(v, k) {
+                                                if (deps.templates && deps.templates.tmpl) {
+                                                    if (prtdeps.templates && prtdeps.templates.tmpl) {
+                                                        var tmpl = deps.templates.tmpl;
+                                                        prtdeps.templates.tmpl.map(function(v, k) {
                                                             if (!tmpl.has(k)) tmpl.set(k, v);
                                                         });
                                                     }
@@ -969,21 +991,21 @@
                                             }
                                         }
                                     }),
-                                    (function makeResult(wrap) {
-                                        return function(run) {
-                                            return function(deps) {
-                                                var res = run(deps);
-                                                var dep = res.deps = wrap(deps);
-                                                if (res.init) {
-                                                    res = res.init(dep);
-                                                }
-                                                if (deps.parent) {
-                                                    res.parent = deps.parent;
-                                                }
-                                                res.name = deps.name;
-                                                res.deps = dep;
-                                                return res;
+                                    (function makeResult(wrap, run) {
+                                        return function(deps) {
+                                            var res = run();
+                                            var dep = res.deps = wrap(deps);
+                                            if (res.init) {
+                                                res = res.init(dep);
                                             }
+                                            if (deps.parent) {
+                                                res.parent = deps.parent;
+                                            }
+                                            if (!deps.name || deps.name.substr(0, 4) != 'core') {
+                                                if (!res.name) res.name = deps.name;
+                                                if (!res.deps) res.deps = dep;
+                                            }
+                                            return res;
                                         }
                                     })
                                 )
@@ -993,13 +1015,13 @@
                                 var link = sys.get('link').make('parser', 'valueMap', parse.call(base)).add('parser', {}, 'base');
                                 sys.get('link').make('loader', 'valueMap', obj.call(sys)).add('loader', {}, 'base');
                                 sys.get('link').make('engine', 'valueMap', eng.call(sys)).add('engine', {
-                                    base: 'loader', tmpl: 'request'
+                                    base: 'loader', tmpl: 'request', templates: 'request'
                                 }, 'base').add('handler', {
                                     components: 'extend', modules: 'extend', system: 'extend',
-                                    types: 'extend', tmpl: 'tmpl', json: 'json'
+                                    types: 'extend', tmpl: 'tmpl', json: 'json', config: 'json', templates: 'tmpl'
                                 }, 'unit').add('scripts', {
                                     'tmpl':  {}, 'style': {}
-                                }, 'tmpl', 'tmpl');
+                                });
                                 return wrap(link.run('loader').free());
                             })(
                                 (function(loader) {
@@ -1012,12 +1034,13 @@
                                         loader: {
                                             make: function(map) {
                                                 return function(ref) {
-                                                    if (ref.$keys) {
-                                                        ref.v = map.run(ref.v, ref.$keys.shift());
-                                                    }else if ((ref = map.run(ref, 'init'))) {
-                                                        if (!ref.v.done) {
+                                                    if (!ref.v || !ref.v.done) {
+                                                        if (ref.$keys) {
                                                             ref.v = map.run(ref.v, ref.$keys.shift());
-                                                            return this.next(ref);
+                                                        }else if ((ref = map.run(ref, 'init'))) {
+                                                            if (!ref.v.done) {
+                                                                return this.next(ref);
+                                                            }
                                                         }
                                                     }
                                                     if (ref.v.done) {
@@ -1027,7 +1050,9 @@
                                                 }
                                             },
                                             free: function() {
-                                                return sys.klass('Free').extend('FreeL', {
+                                                return sys.klass('Free').extend(function FreeL(f, x, t) {
+                                                    this.$$init(f, x, t);
+                                                }, {
                                                     run: function(f) {
                                                         return this[this._t].enqueue(this._x.chain(this.$fn.map(f)));
                                                     }
@@ -1091,8 +1116,7 @@
                                             var xtnd = sys.store('utils.extend');
                                             var deps = sys.klass('Deps');
                                             return function(store) {
-                                                var name = store.get('type') || store.cid().toCamel();
-                                                return ext(xtnd, deps, sys.klass(name) || sys.klass('Component').extend(name));                                      
+                                                return ext(xtnd, deps, store.get('init.v.comp'));                                      
                                             }
                                         })(
                                             (function extend(xtnd, deps, comp) {
@@ -1101,7 +1125,12 @@
 
                                                     if (!result.ext) result.ext = {};
                                                     if (result.parent) {
-                                                        comp.inherit(comp.$ctor, result.parent);
+                                                        var parent = result.parent.ctor;
+                                                        comp.inherit(comp.$ctor, parent.$ctor);
+                                                        comp._parent = parent.$code
+                                                        parent.set(comp.$code, comp.$store);
+                                                        comp.$store.ref(parent.$store);
+                                                        comp._level = parent._level + 1;
                                                     }
                                                     if (result.deps) {
                                                         if (result.ext instanceof Array) {
@@ -1135,7 +1164,9 @@
                                                     if (result.tmpl) {
                                                         xtnd(conf.data || (conf.data = {}), { tmpl: result.tmpl });
                                                     }
-
+                                                    if (result.$init) {
+                                                        result.$init.call(comp.root(), result, comp, comp.sys());
+                                                    }
                                                     return comp.$ctor;
                                                 };
                                             })
@@ -1144,8 +1175,8 @@
                                             return function(template) {
                                                 var elem = document.createElement('div');
                                                 elem.innerHTML = template;
-                                                var store = node.store(), ref;
-                                                var $curr, $prev, $node, $uid = store.cid();
+                                                var store = node.node('data').store(), ref;
+                                                var $curr, $prev, $node, $uid = node.cid();
                                                 while (elem.firstElementChild && (ref = elem.firstElementChild)) {
                                                     $curr = ref.id == 'style' ? 'style' : (ref.getAttribute('data-type') || 'tmpl');
                                                     if ($curr != $prev) $node = meta.get($curr);
@@ -1156,8 +1187,8 @@
                                             }
                                         },
                                         json: function(node, meta) {
-                                            return function(json) {
-                                                return node.klass('Obj').of(json);
+                                            return function(result) {
+                                                return node.klass('Obj').of(result.json);
                                             }
                                         }
                                     };
@@ -1192,14 +1223,16 @@
                                                 return sys.get('assets').get(path) || sys.get('assets').ensure(path)
                                             },
                                             path: function(type, path) {
-                                                return type == 'libs' || type == 'json' ? path.slice(0, 2) : path;
+                                                return type == 'libs' || type == 'json' || type == 'tmpl' ? path.slice(0, 2) : path;
                                             },
                                             type: function(v) {
                                                 v.full = v.ref.replace('.json', '/json').split('.');
                                                 v.path = v.full.first().split('/');
                                                 v.name = v.full.length > 3 ? v.full.pop() : v.path.last();
                                                 v.ext  = (v.full.length > 1 || v.full.push('js')) && (v.path.first() == 'components' && v.path.last() == 'json' ? v.path.pop() : v.full.last());
-                                                if (v.ext == 'tmpl' || v.ext == 'json') {
+                                                if (v.path.first() == 'templates') {
+                                                    v.type = v.path.first();
+                                                }else if (v.ext == 'tmpl' || v.ext == 'json') {
                                                     v.type = v.ext;
                                                     v.path = [ v.type ].concat(v.path.slice(1));
                                                 }else {
@@ -1208,18 +1241,22 @@
                                                 return v.node = this.node(this.path(v.type, v.path.join('/').replace(/\$/g, '').split('/')));
                                             },
                                             next: function(i, v) {
-                                                v.loca  = v.path.length == 3 || v.type == 'core' || v.type == 'helpers' || v.type == 'libs' ? v.ref : [ v.type, v.name, v.name ].join('/');
+                                                v.loca  = v.path.length == 3 || v.type == 'core' || v.type == 'helpers' || v.type == 'libs' || v.type == 'templates' ? v.ref : [ v.type, v.name, v.name ].join('/');
                                                 v.name  = v.node.set('type', v.name.toCamel());
                                                 i.$keys = this.root().keys().slice(2);
                                                 return i;
                                             },
-                                            done: function(res, ref) {
-                                                return res ? { v: res, a: ref } : null;
+                                            done: function(node, init, base, ref) {
+                                                if (init) {
+                                                    return init.v.done ? { a: ref, v: init.v } : init;
+                                                }else {
+                                                    return node.set('init', this.next(base, base.v));
+                                                }
                                             },
                                             base: function(ref) {
-                                                var init = this.init(ref);
-                                                var node = this.type(init.v);
-                                                return this.done(node.get('ref'), ref) || this.next(init, init.v);
+                                                var base = this.init(ref);
+                                                var node = this.type(base.v);
+                                                return this.done(node, node.get('init'), base, ref);
                                             }
                                         },
                                         ctor: {
@@ -1253,7 +1290,7 @@
                                                     if (cont.is(result)) {
                                                         result.run($set);
                                                     }else if (value.is(result)) {
-                                                        cell.set(result.resolve(map));
+                                                        cell.set(result.resolve(cont.is, map));
                                                     }else {
                                                         cell.set(map(result));
                                                     }
@@ -1285,14 +1322,15 @@
                                         result: {
                                             make: function(comp, cont) {
                                                 return function() {
-                                                    var args = [].slice.call(arguments), opts;
+                                                    var args = [].slice.call(arguments), opts, inst;
                                                     if (typeof args.first() == 'object') {
                                                         opts = args.shift();
                                                     }else {
                                                         opts = { name: args.shift() };
                                                     }
                                                     if (args.length) opts.parent = args.shift();
-                                                    return comp.$ctor.of(opts).make(cont);
+                                                    inst = comp.$ctor.of(opts);
+                                                    return inst.make(cont);
                                                 };
                                             },
                                             base: function(v) {
@@ -1304,7 +1342,7 @@
                                                         return r;
                                                     }, {}));
                                                 }
-                                                return v.node.set('ref', { done: true, create: create, cont: cont.cont() });
+                                                return v.node.set('ref', { done: true, create: create || false, cont: cont.cont() });
                                             }
                                         }
                                     });
@@ -1317,7 +1355,7 @@
                             })(
                                 (function(base) {
                                     return function component(ref, create) {
-                                        return base.run(typeof ref == 'object' ? ref : { ref: ref, create: create });
+                                        return base.run(typeof ref == 'object' ? ref : { ref: ref, create: create || false });
                                     }
                                 }),
                                 (function() {

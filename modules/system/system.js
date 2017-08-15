@@ -7,7 +7,7 @@ define(function() {
 
 			core: [ 'pure' ],
 
-			system: [ 'test.$dom', 'test.$types', 'test.$inst' ]
+			system: [ 'test.$dom', 'test.$inst', 'test.$types' ]
 
 		}
 
@@ -16,10 +16,7 @@ define(function() {
 		return {
 
 			ext: {
-				origin: function(plural) {
 
-					return 'system';
-				}
 			}
 
 		};

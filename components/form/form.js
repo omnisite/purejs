@@ -27,10 +27,13 @@ define(function() {
 					var data = args.shift();
 					var make = args.length && args.last() === true ? args.pop() : false;
 					var ctrl = this.control('main');
-					if (args.length) ctrl.path(args.shift());
+					if (args.length) this.bindpath(args.shift());
 					this.data({ fields: data }, 1).get('fields');
 					if (make) ctrl.fields();
 					return this;
+				},
+				bindpath: function(path) {
+					return this.view().parent('$fn.attrs').run({ 'data-bind-path' : this.state('path', path) });
 				},
 				hide: function() {
 					this.$fn('display').run('none');
@@ -48,7 +51,7 @@ define(function() {
 							if (elem.id) rel.push(elem.id);
 							var kls = elem.getAttribute('data-klass'); elem.removeAttribute('data-klass');
 							var cmp = mod.component(rel.join('.'), kls).bind(function(cmp) {
-								cmp.set('data.attachto', elem);
+								cmp.attach(cmp.set('data.attachto', elem));
 								return cmp;
 							});
 							return cmp.pure();
@@ -57,25 +60,10 @@ define(function() {
 					init: function() {
 						return (this._init || (this._init = this.root().view().elms(this.lift(), 'div')('[data-klass]'))).run().run(function(x) {
 							(x instanceof Array ? x : [ x ]).map(function(comp) {
-								var at = comp.attach(comp.get('data.attachto'));
-								comp.render();
-								return at;
+								comp.initialize();
+								return comp.get('data.attachto');
 							});
 						});
-					},
-					sub: function() {
-						return (this._form || (this._form = this.klass('io').of(function(root) {
-							return function(name, data, path) {
-								var child = root.child(name).control('main').fields(data, path);
-								child.$fn('attrs').run({ 'data-bind-ext' : 'nodes.' + name + '.0' });
-								return child.attach(root.$el().toMaybe().run());								
-							}
-						}).lift(function(fn, form) {
-							return this.fx(fn(form));
-						})).run(this.root()));
-					},
-					path: function(path) {
-						return { 'data-bind-path' : this.root().state('path', path) };
 					},
 					form: function(rndr, attr, flds, path) {
 						return flds.map(function $fn(t, k) {
@@ -102,7 +90,7 @@ define(function() {
 								return rndr.run(v.tag).run(v).map(function(elem) {
 									return v.attrs ? attr.ap(elem).pure().run(v.attrs) : elem;
 								});
-							}else {
+							}else if (t.type == 'schema') {
 								return rndr.run('list').run({ path: k }).map(function(elem) {
 									elem.classList.add(k);
 									return elem;
@@ -120,15 +108,17 @@ define(function() {
 					list: function(path) {
 						var form = this.root();
 						var view = form.view();
-						var elem = view.parent('$fn.render').run('list', '[data-bind-ext="' + path + '"]').run({}).map(function(e) {
-							var prnt = e.parentElement;
-							var path = prnt.getAttribute('data-bind-ext');
-							e.setAttribute('data-bind-ext', [ path, prnt.childElementCount - 1 ].join('.'));
+						var elem = view.parent('$fn.render').run('group', '[data-bind-ext="' + path + '"]').run({}).map(function(e) {
+							var prnt  = e.parentElement;
+							var path  = prnt.getAttribute('data-bind-ext');
+							var count = prnt.childElementCount - 1;
+							e.setAttribute('data-bind-ext', [ path, count ].join('.'));
+							if (!count) e.classList.add('top');
 							return e;
 						});
 						var rndr = this.rndr().run(elem.toIO());
 						var attr = view.eff('attrs');
-						return this.form(rndr, attr, form.get('data.fields', path), form.state('path'));						
+						return this.form(rndr, attr, form.get('data.fields', path, 'fields'), form.state('path'));						
 					},
 					fields: function() {
 						var form = this.root();
@@ -150,10 +140,13 @@ define(function() {
 						});
 					},
 					click: function(evt) {
-						var view = this.root('view').closest('[data-bind-path]');
+						var view = this.root().view().closest('[data-bind-path]');
 						if (view) {
+							var elem = evt.target;
+							var ext  = elem.closest('[data-bind-ext]');
+							if (ext) ext = ext.getAttribute('data-bind-ext');
 							view.parent().lookup(view.get('attr.data-bind-path')).chain(function(node) {
-								return node.set('btn' + evt.value, evt.eid);
+								return node.emit('change', 'button.' + evt.value, 'update', ext);
 							});
 						}
 					}
@@ -162,8 +155,7 @@ define(function() {
 			events: {
 				dom: {
 					'click:button': 'data.control.main.click',
-					'change:[data-bind-path]': 'binding',
-					'click:.close': 'hide'
+					'change:[data-bind-path]': 'binding'
 				},
 				data: {
 					'change:data.main.%':'binding'

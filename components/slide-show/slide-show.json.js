@@ -4,41 +4,45 @@ define(function() {
 
     name: 'slide-show.json',
 
-    test: {
+    json: {
 
-      slide1: {
+      test: {
 
-        title: 'Pure JS',
+        slide1: {
 
-        data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
+          title: 'Pure JS',
 
-        label: 'Combining functional with traditional',
+          data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
 
-        text: 'Monadic and applicative effects and control flow running over a router / module / component / view based data structure.'
+          label: 'Combining functional with traditional',
 
-      },
+          text: 'Monadic and applicative effects and control flow running over a router / module / component / view based data structure.'
 
-      slide2: {
-        
-        title: 'Pure JS',
+        },
 
-        data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
+        slide2: {
+          
+          title: 'Pure JS',
 
-        label: 'Data driven component extension',
-        
-        text: 'Enables fine-grained code reuse no matter where the code is defined.'
+          data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
 
-      },
+          label: 'Data driven component extension',
+          
+          text: 'Enables fine-grained code reuse no matter where the code is defined.'
 
-      slide3: {
+        },
 
-        title: 'Pure JS',
+        slide3: {
 
-        data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
+          title: 'Pure JS',
 
-        label: 'High performance convergent event system',
+          data: 'holder.js/900x500?size=10&auto=yes&bg=#AAA&text=_________',
 
-        text: 'Convergence of UI and data events defined by simple relative path annotation on component level.'
+          label: 'High performance convergent event system',
+
+          text: 'Convergence of UI and data events defined by simple relative path annotation on component level.'
+
+        }
 
       }
 

@@ -1,12 +1,34 @@
-(function() {
+(function(klass, worker) {
 	var isWorker = self.isWorker = (function() {
 	    var self = this; return (self.document === undefined);
 	})();
 
-	function klass() {
+	if (isWorker) {
+		importScripts('../libs/sim/sim.js', '../pure.js');
+		
+		sys.run(worker);
+
+	}else {
+
+		define(function() {
+
+			return this.klass('Cont').of(this, function(sys) {
+				return function $_pure(k) {
+					var type = sys.klass('Node').parse(klass());
+					var wrkr = sys.get().child('workers').child('main', type.$ctor);
+					sys.get('async').set('request', wrkr.xhr.bind(wrkr));
+					wrkr.start(); k(wrkr);
+				}
+		    }).attr('name', 'core.worker');
+
+		});
+	}
+})(
+
+	(function() {
 	    return {
-	        klass: function Worker(opts) {
-	        	this.$super.call(this, opts);
+	        klass: function Worker(x) {
+	        	this.$super(x);
 	        	this._worker = this.worker();
 
 	        	this._events = (this.parent('events') || sys.get('events')).child({ name: 'events', parent: this });
@@ -68,15 +90,18 @@
 	        			item.fn(data); this._queue.splice(index, 1); break;
 	        		}
 	        	}),
+	        	(function wrap(succ) {
+	        		return function(data) {
+	        			succ(data.result);
+	        		}
+	        	}),
 	        	(function once(id, fn) {
 	        		this._queue.push({ id: id, fn: fn });
 	        	}),
 	            (function _runAsync(id, request) {
 	                var that = this;
 	                return function $_pure(succ, fail) {
-	                    that.once(id, function(data) {
-	                        succ(data.result);
-	                    });
+	                    that.once(id, that.wrap(succ));
 	                    that.post(request);
 	                };
 	            }),
@@ -97,14 +122,14 @@
 	            	}, {});
 	            }),
 	            (function _request(options) {
+	            	if (!options.type) options.type = 'GET';
 	                var req = this.pick(options, 'type', 'ref', 'url', 'dataType', 'contentType', 'accept', 'parse');
-
 	                if (!req.url) req.url = window.location.href;
 	                if (options.data && options.type != 'GET') {
 	                    req.data = options.contentType ? $.param(options.data) : options.data;
 	                }else if (options.data) {
-	                    var url = Object.keys(options.data).reduce(function(r, v, k) {
-	                        r.push(k + '=' + v);
+	                    var url = Object.keys(options.data).reduce(function(r, k) {
+	                        r.push(k + '=' + options.data[k]);
 	                        return r;
 	                    }, []);
 	                    req.url += '?' + url.join('&');
@@ -135,9 +160,8 @@
 	            var node = sys.root.child('workers');
 	        }
 	    };
-	};
-
-	function worker(sys) {
+	}),
+	(function(sys) {
 
 		var Evt = {
 			opts: sys.get().child('config'),
@@ -191,25 +215,6 @@
 		Evt.post('worker.started');
 
 		return Evt;
-	};
-	if (isWorker) {
-		importScripts('../libs/sim/sim.js', '../pure.js');
-		
-		sys.run(worker);
+	})
 
-	}else {
-
-		define(function() {
-
-			return this.klass('Cont').of(this, function(sys) {
-				return function $_pure(k) {
-					var type = sys.klass('Node').parse(klass());
-					var wrkr = sys.get().child('workers').child('main', type.$ctor);
-					sys.get('async').set('request', wrkr.xhr.bind(wrkr));
-					wrkr.start(); k(wrkr);
-				}
-		    }).attr('name', 'core.worker');
-
-		});
-	}
-})();
+);

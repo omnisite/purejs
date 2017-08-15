@@ -40,15 +40,9 @@ define(function() {
 					this.$fn('prism').run();
 				},
 				show: function(evt) {
-					var ref, raw, val;
-					if (evt.value) {
-						ref = evt.value.split('.');
-						raw = this.find(ref.shift()).get(ref.join('.'));
-					}else {
-						raw = sys.klass(evt).proto();
-					}
-					val = sys.get('utils.toString')(raw, true);
-					this.render(val);
+					this.render(sys.link('items', 'show').prop('run', evt.value || evt).chain(function(raw) {
+						return sys.get('utils.toString')(raw, true);
+					}));
 				},
 				hide: function() {
 					this.$fn('display').run('none');

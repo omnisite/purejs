@@ -34,7 +34,7 @@ define(function() {
 					 	return el.of({ $el: el, toggle: el.ctor.lift(fn(el.run(), document.body, el.fx(function(arr) {
 							return arr.map(function(id, idx) {
 								var elem = document.getElementById(id);
-								elem.style.zIndex = 1050+idx;
+								elem.style.zIndex = 1051+idx;
 								elem.firstChild.style.paddingTop = (idx * 40)+'px';
 								elem.firstChild.style.paddingLeft = (idx * 40)+'px';
 								return elem;
@@ -84,19 +84,43 @@ define(function() {
 					return this.$fn('render').run('main').run({});
 				},
 				content: function(values, type) {
-					return this.$fn('render').run(type || message).run(values);
+					this.control('main').createBody(type || 'message', values, true);
 				},
 				addForm: function(fields, name) {
 					return this.control('main').createForm(name || 'form', fields);
 				},
-				addButton: function(value, text, style) {
-					return this.control('main').createButton(value, text, style);
+				addButton: function(/* value, text, style */) {
+					var args = [].slice.call(arguments), value, text, style;
+					if (args.length > 1) {
+						value = args.shift();
+						text  = args.shift();
+						style = args.shift();
+					}else {
+						text  = args.shift();
+						value = text.toLowerCase();
+					}
+					return this.control('main').createButton(value, text, style === false ? 'display: none' : style);
 				},
 				removeButton: function(name) {
 					return this.get('data.main.buttons').clear(name);
 				},
-				renderBody: function(name, attrs) {
-					return this.control('main').createBody(name, attrs);
+				renderBody: function(name, attrs, replace) {
+					return this.control('main').createBody(name, attrs, replace);
+				},
+				alert: function(/* name, type, text, style */) {
+					var store = this.get('data.main.alert');
+					var args  = [].slice.call(arguments);
+					var name  = args.shift();
+					var attrs = typeof args[0] == 'object' ? args.shift() : {};
+					if (args.length && typeof args[0] == 'string') attrs.type = args.shift();
+					if (args.length && typeof args[0] == 'string') attrs.text = args.shift();
+					if (args.length) attrs.style = args.shift();
+					var curr  = store.get(name);
+					if (!curr) {
+						if (!attrs.type) attrs.type = name;
+						attrs.anim = true; attrs.toggle = 500;
+					}
+					return store.set(name, (curr || {}).clone(attrs));
 				},
 				hide: function() {
 					return this.toggle('hide');
@@ -126,31 +150,41 @@ define(function() {
 							return f;
 						});
 					},
-					createBody: function(name, attrs) {
+					createBody: function(name, attrs, replace) {
 						var root = this.root();
 						var view = root.view();
-						var appn = view.eff('append').ap(root.get('data.tmpl.body'));
+						var appn = view.eff('append');
+						if (replace) appn = appn.ap(view.eff('empty'));
 
-						return appn.lift(function(f, m) {
+						return appn.ap(root.get('data.tmpl.body')).lift(function(f, m) {
 							return f(m);
 						}).run(view.tmpl(name).run(attrs || {}));
 					}
 				},
 				data: {
-					button: function(evt) {
+					footer: function(type, evt) {
 						var root = this.root();
 						var view = root.view();
 
 						if (evt.action == 'create') {
-							var make = this._btn || (this._btn = view.eff('append').ap(root.get('data.tmpl.footer')).pure().ap(view.eff('button').toMaybe()));
+							var make = (this._appn || (this._appn = view.eff('append').ap(root.get('data.tmpl.footer')).pure())).ap(view.eff(type).toMaybe());
 							return make.run(evt.value).chain(function(result) {
+								evt.value.done = true;
 								return root.xtnd(evt.value, result);
 							});
+						}else if (evt.action == 'update') {
+							return evt.value.$set.run(evt.value);
 						}else if (evt.action == 'remove') {
 							var btn = evt.value;
 							if (btn.$el) btn.$el.parentElement.removeChild(btn.$el);
 							return btn;
 						}
+					},
+					button: function(evt) {
+						return this.footer('button', evt);
+					},
+					alert: function(evt) {
+						return this.footer('alert', evt);
 					}
 				}
 			},
@@ -171,19 +205,21 @@ define(function() {
 
 					footer: {},
 
-					buttons: {}
+					buttons: {},
+
+					alert: {}
 
 				}
 			},
 			events: {
 				dom: {
 					'click:button': 'data.control.main.click',
-					'click:.close': 'hide',
 					'change:[data-bind-path]': 'binding'
 				},
 				data: {
 					'change:data.main.%'         : 'binding',
-					'change:data.main.buttons.%' : 'data.control.data.button'
+					'change:data.main.buttons.%' : 'data.control.data.button',
+					'change:data.main.alert.%' : 'data.control.data.alert'
 				}
 			}
 

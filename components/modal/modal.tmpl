@@ -57,12 +57,26 @@
   }
   .modal-body form,
   .modal-body .form {
-      position: static;
+      position: relative; top: 0; left: 0;
   }
   .modal-body .tabs.panel {
       border: none; box-shadow: none;
   }
   .modal-body .tabs ul {
       top: 31px;
+  }
+  .modal-footer .alert {
+    padding: 25px 13px 24px 15px;
+    margin: -15px 15px 0 -15px;
+    width: 100%; box-sizing: content-box;
+    text-align: left; text-indent: 20px;
+  }
+  .modal-footer .alert.anim-done {
+    display: none;
+  }
+  .modal-footer .alert.anim-open,
+  .modal-footer .alert.anim-start,
+  .modal-footer .alert.anim-running {
+    display: block;
   }
 </script>

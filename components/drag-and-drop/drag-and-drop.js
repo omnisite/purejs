@@ -28,6 +28,7 @@ define(function() {
 				mixin: function(opts) {
 					return this.lift(function(dd, comp) {
 						return dd.constructor.create(dd.xtnd({ name: comp.cid(), parent: dd, view: comp.view() }, opts || {})).run(function(inst) {
+							inst.proxy('change', 'drop', dd.cid() + '.drop');
 							return { dd: dd, comp: comp, inst: inst };
 						});
 					});
@@ -64,6 +65,35 @@ define(function() {
 						var root = this.root();
 						return root.view().eff('toggle').run(classname).ap(root.$el());
 					},
+					nest: function() {
+						return (this._nest || (this._nest = this.klass('io').of(this)));
+					},
+					find: function() {
+						return (this._find || (this._find = sys.eff('dom.elements.find').init().run(document.body).toIO()));
+					},
+					moving: function() {
+						return (this._moving || (this._moving = this.nest().lift(function(ctrl, moving) {
+							return this.fx(function(evt) {
+								ctrl._move.state = 'moving';
+								return moving.run(ctrl._move.selector).chain(function(elem) {
+									if (elem.classList.contains('moving')) {
+										elem.style.left = (evt.x - 20) +'px';
+										elem.style.top  = (evt.y - 20) +'px';
+										var hover = document.elementFromPoint(evt.x, evt.y);
+										if (hover) {
+											if (hover.classList.contains('droppable')) {
+												ctrl.enter(hover.parentElement);
+											}else if (ctrl._drop) {
+												ctrl.leave(ctrl._drop);											
+											}
+										}
+										moving.raf(elem);
+									}
+									return elem;
+								}) || true;
+							});
+						}).run(this.root().view().eff('toggle').run('moving').ap(this.find()))));
+					},
 					adjust: function(evt) {
 						if (this._move) {
 							this._move.throttle = this.root().opts('throttle');
@@ -81,13 +111,15 @@ define(function() {
 						var area = evt.currentTarget || evt.target;
 						var root = this.root(), move, view = root.view();
 						if (!this._move) {
-							move = this._move = view.body('mousemove', '.drag-and-drop.dragging', this.move.bind(this), root.opts('throttle') || 50);
+							move = this._move = view.body('mousemove', '#root', this.move.bind(this), root.opts('throttle') || 50);
 							move.identifier   = 'mv'+root.id();
 							move.selector     = '[name="'.concat(move.identifier, '"]');
 							move.draggable    = root.opts('draggable');
 							move.dragging     = move.draggable.concat('.dragging');
 							move.droppable    = root.opts('droppable');
 							move.toggle       = this.toggle('dragging');
+							move.moving       = this.moving();
+							move.wrap         = root.opts('wrap');
 						}
 						this._move.state = 'make';
 						return this._move;
@@ -111,7 +143,7 @@ define(function() {
 							var area = evt.currentTarget || evt.target;
 							var elem = this.elem(area, evt, this._move.draggable);
 							if (elem) {
-								var wrap   = this.drag(elem, evt).run();
+								var wrap = this.drag(elem, evt);
 								wrap.setAttribute('name', move.identifier);
 								move.state = 'starting'; this.move(evt);
 								move.toggle.run();
@@ -119,34 +151,37 @@ define(function() {
 						}
 					},
 					move: function(evt) {
-						if (this._move) {
-							var elem = document.querySelector(this._move.selector);
-							if (elem) {
-								this._move.state = 'moving';
-								elem.style.left  = (evt.x - 10) +'px';
-								elem.style.top   = (evt.y - 10) +'px';
-							}
-						}
+						if (this._move) this._move.moving.raf(evt);
 					},
 					cancel: function(evt) {
 						if (this._move) {
 							this._move.state = 'cancelled';
 						}
 					},
-					stop: function(evt) {
+					stop: function(evt, hndl) {
 						if (this._move) {
 							this._move.state = 'stopping';
 							var elem = document.querySelector(this._move.selector);
 							if (!elem) elem = this.elem(evt.currentTarget || evt.target, evt, this._move.dragging);
 							if (elem) {
+								this._move.state = 'stopped';
 								var root = this.root();
 								var view = root.view();
 								elem.classList.remove('dragging');
-								elem.parentElement.removeChild(elem);
-								if (this._move) this._move = view.removeEventListener(this._move);
-								this._move.toggle.run();
+								elem.removeAttribute('name');
+								if (this._move.wrap) elem.parentElement.removeChild(elem);
+								if (this._drop) {
+									root.emit('change', 'drop', 'update', {
+										drag: elem.firstElementChild,
+										drop: this._drop.parentElement
+									});
+									this.leave();
+								}
+								if (this._move) {
+									this._move.toggle.run();
+									this._move = view.removeEventListener(this._move);
+								}
 							}
-							this._move.state = 'stopped';
 						}
 					},
 					drag: function(elem, evt) {
@@ -154,16 +189,22 @@ define(function() {
 						var root = this.root();
 						var view = root.view();
 
-						return root.$wrap.map(function(el) {
-							 var x = document.createElement('div');
-							 x.innerHTML = el.innerHTML;
-							 x.firstElementChild.innerHTML = elem.outerHTML;
-							 return x.firstElementChild;
-						}).lift(function(w, p) {
+						return (this._wrap || (this._wrap = this._move.wrap ? root.$el().lift(function(p, w) {
+							var i = document.createElement('input');
+							i.classList.add('drag-focus');
+							w.appendChild(i);
 							w.classList.add('dragging');
 							p.appendChild(w);
+							i.focus();
 							return w;
-						}).ap(root.$el());
+						}).ap(root.$wrap.bindIO(function(el, elem) {
+							var x = el.firstElementChild.cloneNode();
+							x.innerHTML = elem.outerHTML;
+							return x;
+						})) : root.$el().lift(function(el, elem) {
+							elem.classList.add('dragging');
+							return elem;
+						}))).run(elem);
 					},
 					drop: function(evt) {
 						var target = evt.target, item = $(target).find('[data-path]'), test, path;
@@ -186,6 +227,33 @@ define(function() {
 								console.log(e);
 							}
 						}
+					},
+					enter: function(trg) {
+						if (!this._drop || this._drop != trg) {
+							if (this._drop) this._drop.classList.remove('hover');
+							this._drop = trg;
+							trg.classList.add('hover');
+						}
+						return trg;
+					},
+					leave: function(trg) {
+						if (this._drop && (!trg || this._drop == trg) && this._drop.classList.contains('hover'))
+							this._drop = this._drop.classList.remove('hover');
+						return this._drop;
+					},
+					over: function(evt) {
+						var trg = evt.currentTarget;
+						if (!this._over || this._over != trg) {
+							if (this._over) this._over.classList.remove('hover');
+							this._over = trg;
+							trg.classList.add('hover');
+						}
+						return evt;
+					},
+					out: function(evt) {
+						var trg = evt.currentTarget;
+						if (this._over && this._over == trg && trg.classList.contains('hover')) this._over = trg.classList.remove('hover');
+						return this;
 					}
 				}
 			},
@@ -198,6 +266,7 @@ define(function() {
 			},
 			opts: {
 				throttle: 30,
+				wrap: true,
 				draggable: '.draggable',
 				droppable: '.droppable'
 			},
@@ -206,8 +275,9 @@ define(function() {
 					'change:opts.%' : 'data.control.main.adjust'
 				},
 				dom: {
-					'mousedown:.draggable'   : 'data.control.main.init',
-					'mousedown:div.draggable': 'data.control.main.start|100',
+					'mouseover:.draggable > *' : 'data.control.main.over|10',
+					'mouseout:.draggable > *' : 'data.control.main.out|10',
+					'mousedown:.draggable'   : [ 'data.control.main.init', 'data.control.main.start|200' ],			
 					'click:.draggable'       : 'data.control.main.cancel',
 					'mouseup:.drag-and-drop' : 'data.control.main.stop'
 				}

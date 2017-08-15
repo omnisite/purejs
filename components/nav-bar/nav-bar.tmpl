@@ -19,13 +19,17 @@
     padding-top: 60px;
   }
   body > .navbar {
-    position: fixed; top: 0; left: 0; width: 100%; z-index: 1060;
+    position: fixed; top: 0; left: 0; width: 100%; z-index: 1050;
   }
   body > .navbar .dropdown.navbar-nav {
     width: 100%;
   }
   body > .navbar .navbar-toggle {
     position: absolute; top: 0; right: 0; margin-top: 6px; margin-right: 10px;
+  }
+  .navbar.navbar-bottom {
+    bottom: 0; margin-bottom: 0;
+    position: absolute; width: 100%;
   }
   @media (max-width: 768px) {
     body > .navbar .navbar-collapse.collapse .pull-right {

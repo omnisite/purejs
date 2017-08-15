@@ -61,6 +61,10 @@
 		return db_query('update', $sql);
 	}
 
+	function db_delete($sql) {
+		return db_query('delete', $sql);
+	}
+
 	function js_get_items($inid = 0) {
 		$where = $inid > 0 ? " where inst_id = ${inid}" : "";
 		$items = db_select('select inst_id as dbid, inst_type as type, inst_data as data from pjs_instance'.$where);

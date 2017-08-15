@@ -8,7 +8,9 @@ define(function() {
 
 			core: [ 'pure', 'dom' ],
 
-			components: [ 'view', 'grid', '$form' ]
+			components: [ 'view', 'grid', '$form' ],
+
+			css: [ 'animation' ]
 
 		}
 

@@ -32,35 +32,49 @@ define(function() {
 
 					base: function() {
 
-						var elem = sys.eff('dom.elements.make').init();
-						var div  = elem.run('div').run();
+						var make = sys.eff('dom.elements.make').init();
+						var div  = make.run('div').run();
+						var mkid = sys.klass('IO').pure(sys.kid);
+						var xtid = mkid.lift(sys.get('utils.extend'));
+						var elem = div.ap(sys.klass('IO').pure(function(id) {
+							return { id: 'E'+id };
+						}).ap(xtid));
 
-						var getid = sys.klass('IO').pure(sys().fn.id);
-
-						var getattrs = sys.klass('IO').pure(function(id) {
-						  return { id: 'E'+id };
+						var load = sys.eff('sys.loader.component').map(function(c) {
+							return c.bind(function(x) {
+						  		return x.get('IO') || x.set('IO', x.klass('IO').of(x.store()).map(function(node) {
+									return function(key) {
+						      			return node.get(key);
+						            }
+						  		}).to('io').run());
+						    });
 						});
-
-						var makeattrs = getattrs.ap(getid).lift(function(base, ext) {
-						  return sys('utils.extend')(base, ext);
-						});
-
-						var makediv = div.ap(makeattrs);
-
-						var tmpl = sys.eff('io.request.script').map(function(x) {
-						  return x.get('IO') || x.set('IO', x.klass('IO').of(x.store()).lift(function(node, key) {
-						      return node.get(key);
-						  }));
-						});
-
-						var tmplbase = tmpl.run({url:'templates/base.tmpl'});
-
-						var html = sys.eff('dom.elements.html').init();
+						var tmpl = sys.eff('dom.elements.template').init().flip().run({});
+						var html = sys.eff('dom.elements.html').init().ap(elem);
+						var rndr = html.ap({test:'test'}).pure();
+						var attr = sys.eff('sys.loader.component').init();
+						var data = sys.klass('data').of({
+							ref: 'templates/base.tmpl',
+							cont: load,
+							load: 'main',
+							tmpl: tmpl,
+							attr: attr.liftIO(),
+							comp: 'config/test.json',
+							rndr: rndr
+						}).unit();
+						var kont = data.cont();
 
 						return {
-
-							makediv: makediv
-
+							mkid: mkid,
+							xtid: xtid,
+							attr: attr,
+							elem: elem,
+							data: data,
+							load: load,
+							tmpl: tmpl,
+							html: html,
+							rndr: rndr,
+							kont: kont
 						};
 
 					},
@@ -70,7 +84,7 @@ define(function() {
 							return comps.lookup(path);
 						});
 
-						var test = sys.eff('dom.calc.getSize').ap(comp.map(function(cmp) {
+						var test = sys.eff('dom.calc.size').ap(comp.map(function(cmp) {
 						 	return cmp.chain(function(c) {
 								return c.$el ? c.$el().run() : null;
 							});
@@ -87,8 +101,8 @@ define(function() {
 							return x.create({ name: 'drag', parent: sys.get('components.app') }).pure();
 
 						}).bind(function(drag) {
-							var home = drag.mixin({ opts: { draggable: '.draggable tr' } }).run(sys.get('components.app'));
-							var enbl = home.enable('.accordion', '.panel.panel-default');
+							var home = drag.mixin({ opts: { draggable: '.draggable tr a' } }).run(sys.get('components.app'));
+							var enbl = home.enable('.accordion', '.panel .panel-collapse tbody');
 							enbl.run();
 							return drag;
 						});

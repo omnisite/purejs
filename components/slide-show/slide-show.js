@@ -37,10 +37,9 @@ define(function() {
 				},
 				createTest: function() {
 					var slides = this.deps('json.slide-show.test');
-					var result = slides.map(function(k, i) {
-						var s = slides[k];
-						if (!i) s.active = true;
-						return s;
+					var result = slides.map(function(v, k, i) {
+						if (!i) v.active = true;
+						return v;
 					});
 					var slice = [].slice.call(arguments);
 					return this.control('main').createSlides(slice.length ? result.slice.apply(result, slice) : result);
@@ -66,7 +65,7 @@ define(function() {
 						return appn.lift(function(f, a) {
 							return a.map(f);
 						}).run(items.map(function(attrs) {
-							return tmpl.run(attrs);
+							return tmpl.run(attrs || {});
 						})).map(function(i) {
 							return i.chain(function(e) {
 								return e.querySelector('img');
@@ -92,8 +91,8 @@ define(function() {
 				slideshow: {
 
 					move: function(evt) {
-						var root   = this.root();
-						var state  = root.state('slides');
+						var root  = this.root();
+						var state = root.state('slides');
 						if (state.curr == state.next) {
 							state.prev = state.curr;
 							state.ctrl = evt.currentTarget.getAttribute('data-control');

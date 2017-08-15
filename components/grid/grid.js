@@ -14,22 +14,52 @@ define(function() {
 
 		}
 
-	}, function(deps) {
+	}, function() {
 
 		return {
-
 			ext: {
-				render: function(x, y, e, z) {
-					var cell  = this.view().parent('$fn.render').run('item');
-					var attrs = this.view().eff('attrs');
-					return Array.range(0, x - 1).combine(function(a, b) {
-						var attr = { id: 'r' + a + (b || z ? ('c' + b) : ''), row: a, col: b };
-						var elem = e && e.length ? attrs.run(e.shift())(attr).unit() : cell.run(attr).unit();
-						if (attr.row && !attr.col) elem.classList.add('clear');
-						else if (elem.classList.contains('clear')) elem.classList.remove('clear');
-						return elem;
-					}, Array.range(0, y - 1));
-				},
+				render: (function($wrap, $make, $bind, $grid) {
+					return $wrap($make($grid, $bind));
+				})(
+					(function $wrap($run) {
+						return function render(x, y, e, z) {
+							return $run(this.view(), x, y, e, z);
+						}
+					}),
+					(function $make($grid, $bind) {
+						return function(v, x, y, e, z) {
+							return $bind($grid(v, e, z))(x)(y);
+						}
+					}),
+					(function $bind($grid) {
+						return function $mapX(x) {
+							return function $mapY(y) {
+								return (x instanceof Array ? x.map(function(xx) {
+
+									return y instanceof Array ? y.map($mapX(xx)) : $mapX(xx)(y);
+
+								}) : (y instanceof Array ? y.map(function(yy, ii) {
+
+									return yy instanceof Array ? yy.map($mapX(ii)) : $grid(Array.range(ii, ii + x - 1), yy);
+
+								}) : $grid(Array.range(0, x - 1), y)));
+							}
+						}
+					}),
+					(function $grid(view, e, z) {
+						var cell  = view.parent('$fn.render').run('item');
+						var attrs = view.eff('attrs');
+						return function grid(x, y) {
+							return x.combine(function(a, b) {
+								var attr = { id: 'r' + a + (b || z ? ('c' + b) : ''), row: a, col: b };
+								var elem = e && e.length ? attrs.run(e.shift())(attr).unit() : cell.run(attr).unit();
+								if ((attr.row || x == 1) && !attr.col) elem.classList.add('clear');
+								else if (elem.classList.contains('clear')) elem.classList.remove('clear');
+								return elem;
+							}, Array.range(0, y - 1));
+						}
+					})
+				),
 				chop: function(e, l) {
 					while (e.childElementCount > l) {
 						e.removeChild(e.children.item(e.childElementCount-1));
@@ -62,7 +92,6 @@ define(function() {
 					}).run(unit).run();
 				}
 			}
-
 		};
 
 	});

@@ -89,7 +89,7 @@ define(function() {
 				},
 				dom: {
 					'click:li': 'data.control.main.click',
-					'mouseover:li.dropdown': 'data.control.main.enter',
+					//'mouseover:li.dropdown': 'data.control.main.enter',
 					'mouseout:ul.toggle ul.dropdown-menu li': 'data.control.main.leave'
 				}
 			}

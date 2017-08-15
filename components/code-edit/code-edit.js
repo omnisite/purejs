@@ -30,6 +30,9 @@ define(function() {
 			},
 			klass: {
 				ext: {
+					initialize: function() {
+						this.control('main').init();
+					},
 					highlight: function() {
 
 					},
@@ -44,14 +47,16 @@ define(function() {
 							return (this._cf || (this._cf = this.root().$el().lift(function(el, rt) {
 								var flsk = rt.deps('helpers.codeflask').make(el, { language: 'javascript', lineNumbers: true });
 								var name = el.parentElement.id;
+								flsk.textarea.setAttribute('data-bind-name', name);
+
 								var ext  = el.closest('[data-bind-ext]');
 								var full = ext ? [ ext.getAttribute('data-bind-ext'), name ] : [ name ];
 								var view = rt.view().closest('[data-bind-path]');
 								view.parent().lift(function(parent, path) {
 									full.unshift(path);
+									flsk.update(parent.get(full.join('.')) || '');
 									rt.observe(parent, 'change', full.join('.'), 'data.control.main.change');
 								}).ap(view.bindpath());
-								flsk.textarea.setAttribute('data-bind-name', name);
 								return flsk;
 							}).run(this.root())));
 						},

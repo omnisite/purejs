@@ -24,8 +24,9 @@ define(function() {
 
 			klass: function() {
 				return {
-					klass: function Router(opts) {
-						this.$super.call(this, opts);
+					klass: function Router(x) {
+						var opts = x || {};
+						this.$super(opts);
 						this._events  = (opts.parent._events || opts.parent.get('events')).child({ name: 'events', parent: this });
 						this._started = 1;
 						this._scope   = opts.scope || [];
@@ -52,7 +53,7 @@ define(function() {
 									while(index < parts.length) {
 										test = parts.slice(index, index+1).join('/');
 										if (rtr.testIfExists(test)) {
-											result = rtr.setActiveRoute(parts.slice(0, index+1).join('/'));
+											result = rtr.setActiveRoute(test);//parts.slice(index, index+1).join('/'));
 											break;
 										}else {
 											parts.pop();
@@ -82,6 +83,9 @@ define(function() {
 							}
 							return scope;
 						}),
+						(function scope() {
+							return this._scope;
+						}),
 						(function module(arg) {
 							if (!arg && typeof arg == 'undefined') return this._module;
 							else if (typeof arg == 'string' && arg.toLowerCase() != arg) return this._module.get([ 'fn', arg ].join('.'));
@@ -103,11 +107,15 @@ define(function() {
 						}),
 						(function getActiveRouter(arg) {
 							var router = this.root, test = router,
-								active = (router.get('active') || '').split('/'),
+								active = router.getFromHash().split('/'),//(router.get('active') || '').split('/'),
 								scopes = router.get('scopes');
 							if (active && scopes) {
 								while ((test = scopes.get(active.shift())) && test instanceof router.constructor) {
-									router = test;
+									if (test.started() && test.testIfExists(active.length ? active.first() : '')) {
+										router = test;
+									}else {
+										break;
+									}
 									if (!(scopes = router.get('scopes'))) break;
 								}
 							}
@@ -141,10 +149,11 @@ define(function() {
 						(function run(evt) {
 							if (evt.target == 'active') {
 								var router  = this.getActiveRouter();
+								console.log('ROUTER: handler = ', this.identifier(), ' relay = ', router.identifier());
 								var active  = evt.value.split('/').pop();
 								var handler = router.getRoute(active);
 								if (handler && handler instanceof Function) {
-									handler.call(this, this.getRouteName(active), this.get('previous'));
+									this.enqueue(handler(this.getRouteName(active), this.get('previous')));
 								}
 							}
 						}),
@@ -217,7 +226,7 @@ define(function() {
 						}),
 						(function addRoute(name, handler, info, aliasIfStringOrUseAsDefaultIfTrue) {
 							var routes = this.getRoutes();
-							routes.set(name, handler);
+							routes.set(name, Function.prototype.bind.bind(Function.prototype.call, handler, this));
 							if (info === true) this.setDefault(name);
 							else if (typeof info == 'string') this.addAlias(info, name);
 							else if (typeof info != 'undefined') this.addInfo(name, info);
