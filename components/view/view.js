@@ -23,12 +23,26 @@ define(function() {
 							klass: sys.klass('Reader'), $cache: sys.get().ensure('cache.view'), $eff: def.$eff
 						}).of(def.reader.init);
 
-						def.ext.reader = init.bind(def.reader.make);
-						def.ext.$eff   = def.$eff;
-						def.ext.doT    = def.doT(def.deps('scripts.doT'));
+						def.ext.reader  = init.bind(def.reader.make);
+						def.ext.$eff    = def.$eff;
+						def.ext.doT     = def.doT(def.deps('scripts.doT'));
+						def.ext.attach  = def.attach.$fn(sys.klass('io').lift(def.attach.$io));
+
 						return { ext: def.ext, deps: def.deps };
 					}
 				})(this);
+			},
+			attach: {
+				$io: function(comp, child) {
+					return comp.$el(comp.lookup('data.params.attach').lift(function(params, cid) {
+						return params.get(cid) || params.get('any') || params.get('all');
+					}).ap(child.cid()).orElse('*').unit());
+				},
+				$fn: function(io) {
+					return function(child) {
+						return io.run(this.parent()).run(child);
+					}
+				}
 			},
 			deps: function(deps) {
 				this.deps = deps;
@@ -196,6 +210,7 @@ define(function() {
 					parent.state(key, value);
 					return parent;
 				},
+
 				queue: function(path) {
 					return this._dom.getQueue('dom').lift(function(dom, node) {
 						return dom.lookup(node.nid()).chain(function(node) {
@@ -203,6 +218,7 @@ define(function() {
 						});
 					}).ap(path ? this.parent().module().lookup(path) : this.parent().maybe());
 				},
+
 				update: function(opts) {
 					opts || (opts = {});
 					this.$super.call(this.parent('view', this), opts);
@@ -429,9 +445,9 @@ define(function() {
 							if (rel) {
 								return this.evts().run(evt).ap(this.$el('[data-bind-ext="' + evt.ref.split('.').slice(-rel).join('.') + '"] [data-bind-name="' + evt.target + '"]'));
 							}else {
-								return this.evts().run(evt).ap(this.parent('$fn.query').run('[data-bind-name="' + evt.target + '"]'));
+								//return this.evts().run(evt).ap(this.parent('$fn.query').run('[data-bind-name="' + evt.target + '"]')).run();
 								//return this.dbpt().run('[data-bind-name="' + evt.target + '"]').ap().run();
-//								return this.evts().run(evt).ap(this.$el('[data-bind-name="' + evt.target + '"]'));
+								return this.evts().run(evt).ap(this.$el('[data-bind-name="' + evt.target + '"]'));
 							}
 						}
 					}

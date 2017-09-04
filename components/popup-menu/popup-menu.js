@@ -2,7 +2,7 @@ define(function() {
 
 	return this.enqueue({
 
-		name: 'nav-bar',
+		name: 'popup-menu',
 
 		deps: {
 
@@ -29,7 +29,6 @@ define(function() {
 					return function(dd) {
 						dd.$fn('attrs').run(attrs);
 						dd.$fn('attach').run(elem.unit());
-						dd.parent().attach(document.body);
 						return nav;
 					};
 				},
@@ -47,27 +46,27 @@ define(function() {
 				main: {
 					toggle: function() {
 						var root = this.root();
-						return (this._toggle || (this._toggle = root.view().eff('toggle').run('in').ap(root.$fn('find').ap('.navbar-collapse'))));
+						return (this._toggle || (this._toggle = root.view().eff('toggle').run('open').ap(root.$fn('find').ap('.popup.dropdown'))));
 					}
 				}
 			},
 			tmpl: {
 
-				tag: 'nav',
+				tag: 'div',
 
 				attr: function() {
 
-					return { 'class' : 'navbar navbar-inverse' };
+					return { 'class' : 'dropdown' };
 				},
 
 				wrap: function() {
 
-					return { 'class' : 'nav navbar-nav toggle' };
+					return { 'class' : 'dropdown-menu' };
 				}
 			},
 			events: {
 				dom: {
-					'click:.navbar-toggle': 'toggle'
+					'click:.dropdown-toggle': 'toggle'
 				}
 			}
 		};

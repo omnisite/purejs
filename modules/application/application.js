@@ -19,7 +19,7 @@ define(function() {
 					return function(app) {
 
 						var comps  = sys.get('components');
-						comps.initialize = app.navbar;
+						//comps.initialize = app.navbar;
 
 						var module = comps.get('app');
 						var navbr  = app.deps('components.nav-bar').create('navbar');
@@ -104,6 +104,7 @@ define(function() {
 			},
 			control: {
 				main: {
+
 					codeb: function(evt) {
 						var root = this.root();
 						var hndl = root.removeEventListener(evt);
@@ -226,9 +227,6 @@ define(function() {
 						return this.map(base.cid()).call(this, ref);
 					}
 				}
-			},
-			navbar: function() {
-				this.get('navbar').attach(document.body);
 			},
 			accor: function() {
 				return {

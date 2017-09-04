@@ -352,8 +352,8 @@ define(function() {
                         (function render(tag) {
                             var elem = document.createElement(tag);
                             return function render(str) {
-                                elem.innerHTML = str;
-                                return elem.removeChild(elem.firstChild);
+                                elem.innerHTML = str || '';
+                                return elem.firstChild ? elem.removeChild(elem.firstChild) : elem;
                             }
                         }),
                         (function tr() {

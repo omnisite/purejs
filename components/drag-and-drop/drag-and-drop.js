@@ -169,10 +169,12 @@ define(function() {
 								var view = root.view();
 								elem.classList.remove('dragging');
 								elem.removeAttribute('name');
-								if (this._move.wrap) elem.parentElement.removeChild(elem);
+								if (this._move.wrap) {
+									elem.parentElement.removeChild(elem);
+								}
 								if (this._drop) {
-									root.emit('change', 'drop', 'update', {
-										drag: elem.firstElementChild,
+									root.parent().emit('change', 'drop', 'update', {
+										drag: elem,
 										drop: this._drop.parentElement
 									});
 									this.leave();
@@ -198,37 +200,20 @@ define(function() {
 							i.focus();
 							return w;
 						}).ap(root.$wrap.bindIO(function(el, elem) {
-							var x = el.firstElementChild.cloneNode();
+							var x = el.firstElementChild.cloneNode(), d;
 							x.innerHTML = elem.outerHTML;
+							[ 'data-id', 'data-path', 'data-key'].forEach(function(attr) {
+								var data = elem.closest('[' + attr + ']');
+								if (data) x.setAttribute(attr, data.getAttribute(attr));
+							});
 							return x;
 						})) : root.$el().lift(function(el, elem) {
 							elem.classList.add('dragging');
 							return elem;
 						}))).run(elem);
 					},
-					drop: function(evt) {
-						var target = evt.target, item = $(target).find('[data-path]'), test, path;
-						if (item.length) {
-							try {
-								path = item.attr('data-path').replace('.items', '');
-								test = core(path.replace('root', 'root.system.modules.animation'));
-								if (test instanceof Function) test = test('default');
-								if (test) {
-									if (test.class) {
-										test.class('draggable'); test.class('droppable');
-									}
-									if (test.style && test.style instanceof Function) {
-										test.style('top', evt.y + 'px');
-										test.style('left', evt.x + 'px');
-									}
-									if (test.attach) test.attach();
-								}
-							}catch(e) {
-								console.log(e);
-							}
-						}
-					},
 					enter: function(trg) {
+						//console.log('enter', trg);
 						if (!this._drop || this._drop != trg) {
 							if (this._drop) this._drop.classList.remove('hover');
 							this._drop = trg;
@@ -237,16 +222,24 @@ define(function() {
 						return trg;
 					},
 					leave: function(trg) {
+						//console.log('leave', trg);
 						if (this._drop && (!trg || this._drop == trg) && this._drop.classList.contains('hover'))
 							this._drop = this._drop.classList.remove('hover');
 						return this._drop;
 					},
 					over: function(evt) {
 						var trg = evt.currentTarget;
-						if (!this._over || this._over != trg) {
-							if (this._over) this._over.classList.remove('hover');
-							this._over = trg;
-							trg.classList.add('hover');
+						var nid = sys.find(evt.sid).identifier(true).last();
+						var ref = trg.closest('.drag-and-drop');
+						if (ref.id == nid) {
+							//console.log('over', ref.id, nid, trg, evt);
+							if (!this._over || this._over != trg) {
+								if (this._over) this._over.classList.remove('hover');
+								this._over = trg;
+								trg.classList.add('hover');
+							}
+						}else {
+							//console.log('skip', ref.id, nid, trg, evt);
 						}
 						return evt;
 					},

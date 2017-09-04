@@ -914,9 +914,12 @@
                                             });
                                         }else if (k == 'scripts' || k == 'json' || k == 'css' || k == 'styles' || k == 'templates') {
                                             return v.map(function(name) {
-                                                var path = name.split('/'), cont;
+                                                var path = name.split('/'), cont, isComp = path.first().match(/(modules|components)/);
                                                 if (k == 'templates' || k == 'css' || k == 'json') {
-                                                    if (k == 'css' && o.name.indexOf('.') > 0) path = o.name.split('.').append(name);
+                                                    if (name == 'tmpl' && o.name.indexOf('.') > 0 && (path = o.name.split('.')))
+                                                        path = path.append(path.last());
+                                                    else if (k == 'css' && o.name.indexOf('.') > 0)
+                                                        path = o.name.split('.').append(name);
                                                     else if (k == 'css' || k == 'json' || (name == 'tmpl' && o.name && (name = o.name)))
                                                         path = [ 'components', name, name ];
                                                     else if (path.length < 2) path.unshift('templates');
@@ -1044,7 +1047,7 @@
                                                         }
                                                     }
                                                     if (ref.v.done) {
-                                                        return this.done(ref.a.create ? ref.v.create(ref.a.create).pure() : ref.v.cont);
+                                                        return this.done(ref.a.create && ref.v.create ? ref.v.create(ref.a.create).pure() : ref.v.cont);
                                                     }
                                                     return this.cont(ref);
                                                 }
@@ -1232,6 +1235,8 @@
                                                 v.ext  = (v.full.length > 1 || v.full.push('js')) && (v.path.first() == 'components' && v.path.last() == 'json' ? v.path.pop() : v.full.last());
                                                 if (v.path.first() == 'templates') {
                                                     v.type = v.path.first();
+                                                }else if (v.path.length > 3 && v.ext == 'tmpl') {
+                                                    v.type = v.ext;
                                                 }else if (v.ext == 'tmpl' || v.ext == 'json') {
                                                     v.type = v.ext;
                                                     v.path = [ v.type ].concat(v.path.slice(1));
@@ -1241,7 +1246,10 @@
                                                 return v.node = this.node(this.path(v.type, v.path.join('/').replace(/\$/g, '').split('/')));
                                             },
                                             next: function(i, v) {
-                                                v.loca  = v.path.length == 3 || v.type == 'core' || v.type == 'helpers' || v.type == 'libs' || v.type == 'templates' ? v.ref : [ v.type, v.name, v.name ].join('/');
+                                                v.loca  = v.path.length == 3
+                                                    || v.type == 'core' || v.type == 'helpers' || v.type == 'modules'
+                                                    || v.type == 'libs' || v.type == 'templates' || v.type == 'tmpl'
+                                                    ? v.ref : [ v.type, v.name, v.name ].join('/');
                                                 v.name  = v.node.set('type', v.name.toCamel());
                                                 i.$keys = this.root().keys().slice(2);
                                                 return i;
@@ -1322,13 +1330,18 @@
                                         result: {
                                             make: function(comp, cont) {
                                                 return function() {
-                                                    var args = [].slice.call(arguments), opts, inst;
+                                                    var args = [].slice.call(arguments), opts, inst, loca, base;
                                                     if (typeof args.first() == 'object') {
                                                         opts = args.shift();
                                                     }else {
                                                         opts = { name: args.shift() };
                                                     }
                                                     if (args.length) opts.parent = args.shift();
+                                                    if (!opts.parent) {
+                                                        base = sys.get('components');
+                                                        loca = comp.get('info.ref').split('/').slice(1, -2);
+                                                        opts.parent = loca.length ? base.get(loca) : base;
+                                                    }
                                                     inst = comp.$ctor.of(opts);
                                                     return inst.make(cont);
                                                 };

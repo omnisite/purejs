@@ -381,7 +381,7 @@
         return [].slice.call(arguments);
     })(
         // === INIT === //
-            (function(CTOR, DB, Store, Utils, Parse, Node, Functor, Compose, Cont, Reader) {
+            (function(CTOR, DB, Store, Utils, Parse, Node, Functor, Arr, Compose, Cont, Reader) {
 
                 var $Base  = CTOR.shift().apply(this, CTOR);
                 var $CTOR  = new $Base($Base);
@@ -396,6 +396,8 @@
                 var $Root    = $CTOR.parse(Node).$store.root;
                 var $Sys     = $Root.set('sys', this);
                 var $Functor = $CTOR.parse(Functor);
+
+                var $ARRAY   = $CTOR.parse(Arr);
                 var $Compose = $Functor.parse(Compose);
                 var $Cont    = $Functor.parse(Cont);
                 var $Reader  = $Compose.parse(Reader);
@@ -519,14 +521,19 @@
                         child: function(ctor, proto, attrs) {
                             var klass = this.inherit(this.named(('$'+ctor.name).replace('$$', '$'), true, true), this.constructor);
                             var $ctor = ctor instanceof Function ? ctor : this.named(ctor.name.toTypeName(), false, false, true);
-                            klass.$ctor = this.$code != '$ctor' ? this.inherit($ctor, this.$ctor, proto) : this.inherit($ctor, this.base, proto);
+                            klass.$ctor = attrs && attrs.basetype ? ctor : (this.$code != '$ctor' ? this.inherit($ctor, this.$ctor, proto) : this.inherit($ctor, this.base, proto));
                             return klass;
                         },
                         extend: function(ctor, proto, attrs) {
-                            var child  = ctor instanceof Function ? ctor : (typeof ctor == 'string' ? { name: ctor } : 'Child');
-                            var exists = this.$store ? this.$store.get(child.name.toTypeCode()) : null;
+                            var child, exists, klass;
+                            if (attrs && attrs.basetype) {
+                                child = ctor;
+                            }else {
+                                child = ctor instanceof Function ? ctor : (typeof ctor == 'string' ? { name: ctor } : 'Child');
+                            }
+                            exists = this.$store ? this.$store.get(child.name.toTypeCode()) : null;
                             if (exists) return exists.get('type');
-                            var klass  = this.child(child, proto, attrs);
+                            klass  = this.child(child, proto, attrs);
                             if (!klass.$ctor.prototype.__) klass.$ctor.prototype.__ = klass.$ctor;
                             if (!klass.$ctor.prototype.kid) klass.$ctor.prototype.kid = this.kid;
                             return new klass(klass.$ctor, attrs, this);
@@ -536,7 +543,7 @@
                             var ctor  = type.klass || type.ctor;
                             var proto = type.ext instanceof Function ? type.ext.call(this.sys()) : type.ext;
                             var attrs = type.attrs;
-                            var klass = this.extend(ctor, proto, attrs);
+                            var klass = this.extend(ctor, proto, type.basetype ? { basetype: true } : attrs);
                             var extnd = type.extend ? this.find(type.extend).proto() : false;
                             if (extnd) {
                                 Object.keys(extnd).reduce(function(r, k) {
@@ -620,7 +627,7 @@
                             })));
                         },
                         to: function(type, fn) {
-                            return this.map(this.klass(type).pure);
+                            return this.map(this.ctor.find(type).pure);
                         },
                         walk: function(f) {
                             var ctor = this;
@@ -2357,6 +2364,10 @@
                                 && (cdata.main || !data.has('main') || !data.get('main').length()))
                                     this.data({ main: this.extend(this.conf.data.main, cdata.main) });
 
+                            if ((cdata.params || (this.conf.data && this.conf.data.params))
+                                && (cdata.params || !data.has('params')))
+                                    this.data({ params: this.extend(this.conf.data.params, cdata.params) });
+
                             if (conf.data) this._data.parse(conf.data, 1);
 
                             return this;
@@ -2424,7 +2435,7 @@
                         klass.prop('path', $store.prop('path', utils.get('path')));
 
                         var root = sys.root = klass.of({ name: 'root', store: store });
-                        var ctor = sys.ctor = this;
+                        var ctor = sys.ctor = this; root.child('process').set('queue', []);
 
                         //var ext  = root.child('ext');
                         store.map(function $fn(v,k,i,o) {
@@ -2545,6 +2556,14 @@
                             return new this.constructor(x, y);
                         })
                     ),
+                    $run: function(operation) {
+                        return Function.prototype.call.bind(operation.run, operation);
+                    },
+                    $atom: function(operation) {
+                        return function() {
+                            return operation.run();
+                        }
+                    },
                     init: function(type, klass, sys) {
                         klass.prop('of', type.of);
                         klass.prop('$$of',   '');
@@ -2553,6 +2572,23 @@
                         klass.prop('$$path', '');
                         klass.prop('$$run',  '');
                         klass.prop('$$last', '');
+                        klass.prop('$run', sys.get('utils.call')(type.$run));
+                        klass.prop('$atom', sys.get('utils.call')(type.$atom));
+                    }
+                };
+            }),
+        // === ARRAY === //
+            (function() {
+                return {
+                    klass: Array,
+                    basetype: true,
+                    functor: function() {
+                        return this.ctor.find('functor').of(this);
+                    },
+                    init: function(type, klass, sys) {
+                        klass.$ctor.konst = sys.fn.$const;
+                        klass.$ctor.extract = sys.fn.extract;
+                        klass.find('Functor').attr('$toArray', type.functor);
                     }
                 };
             }),
@@ -3136,14 +3172,14 @@
                 }
                 return _xhr;
             }),
-            (function(wrap, parser, loader) {
+            (function(wrap, parser, loader, queue) {
                 return function $_script($_pure) {
-                    return wrap(loader, parser, $_pure);
+                    return wrap(loader, parser, $_pure, queue(this).timer(self.setTimeout, true));
                 }
             })(
-                (function(loader, parser, pure) {
+                (function(loader, parser, pure, queue) {
                     return function script(url, key) {
-                        return loader(pure(parser(url, key)));
+                        return loader(pure(parser(url, key)), queue);
                     }
                 }),
                 (function(url, ref) {
@@ -3159,7 +3195,7 @@
                     url.url = url.url.replace(/\$/g, '');
                     return url;
                 }),
-                (function(url) {
+                (function(url, queue) {
                     return function $_pure(succ, fail) {
                         url(function (info) {
                             var head = document.getElementsByTagName('head')[0];
@@ -3199,14 +3235,63 @@
                                 });
                                 script.addEventListener("error", function() {
                                     this.setAttribute('data-state', 'fail');
-                                    fail(this);
+                                    if (fail) fail(this);
                                 });
                                 script.setAttribute('data-state', 'load');
-                                head.appendChild(script);
+                                queue.enqueue(function() {
+                                    head.appendChild(script);
+                                });
                             }
                         }, fail);
                     };
-                })
+                }),
+                (function(timer, tick, item, schedule, dequeue) {
+                    return function(node) {
+                        var proc = node.get('root.process');
+                        return proc.set('script', timer({
+                            tick: tick, item: item, dequeue: dequeue
+                        }, proc.get('queue'), schedule));
+                    };
+                })(
+                    (function(o, q, s) {
+                        o.tick  = o.item(q, o.tick);
+                        o.timer = function(timer, func) {
+                            o.$enqueue = timer;
+                            o.schedule = s(o, func ? o.tick.next : o.tick);
+                            o.enqueue  = o.dequeue(q, o);
+                            return o;
+                        };
+                        return o;
+                    }),
+                    (function(f) {
+                        return f();
+                    }),
+                    (function(queue, tick) {
+                        return {
+                            frameid: 0, count: 0,
+                            next: function() {
+                                //console.log('async.queue.dequeue', queue.length);
+                                while (queue.length) tick(queue.shift() || unit);
+                                return !queue.length;
+                            }
+                        };
+                    }),
+                    (function(o, i) {
+                        return function() {
+                            //console.log('async.queue.schedule');
+                            unit(o.$enqueue)(i);
+
+                        }
+                    }),
+                    (function(q, o) {
+                        return function enqueue(x) {
+                            if ((q.length * q.push(x)) == 0) {
+                                o.schedule();
+                            }
+                            return q.length;
+                        }
+                    })
+                )
             ),
             (function $_request($_newxhr, $_pure) {
                 return function request(url, options) {

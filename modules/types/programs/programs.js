@@ -1,58 +1,65 @@
 define(function() {
 	return this.enqueue({
 
-		name: 'modules.home',
+		name: 'modules.types.programs',
 
 		deps: {
 
-			core: [ 'pure', 'dom' ],
+			core: [ 'pure' ],
 
-			components: [ 'title' ]
+			components: [ 'view', 'popup-menu', 'drag-and-drop' ],
+
+			templates: [ 'tmpl' ],
+
+			css: [ 'programs' ]
 
 		}
 
 	}, function() {
 
 		return {
-
 			ext: {
-				initialize: function() {
-					var title = this.get('title');
-					title.control('main').anim().run();
-					title.proxy('click', 'ul', 'title.run');
+				main: function() {
+					this.deps('components.popup-menu').create({
+						name: 'dd', parent: this
+					}).run(this.bin(function(comp, dd) {
+						comp.$fn('append').ap(comp.view().tmpl('main')).run({});
+						dd.item({ id: 'map', name: 'Map' });
+						dd.item({ id: 'bind', name: 'Bind' });
+						dd.item({ id: 'chain', name: 'Chain' });
+						dd.item({ id: 'ap', name: 'Ap' });
+						dd.item({ id: 'lift', name: 'Lift' });
+						dd.attach(comp.view().$el());
+					}));
+					this.view().css();
 				},
-				launch: function() {
-					sys.get('router').navigate('app');
+				drag: function() {
+					return sys.eff('sys.loader.component').run('components/drag-and-drop/drag-and-drop').bind(function(x) {
+
+						return x.create({ name: 'drag-programs', parent: sys.get('components.types.programs') }).pure();
+
+					}).run(function(drag) {
+						var home = drag.mixin({ opts: { draggable: '.draggable' } }).run(sys.get('components.types.programs'));
+						var enbl = home.enable('div', '.drop-wrap');
+						enbl.run();
+
+						return drag;
+					});
 				}
 			},
-
-			init: function(deps) {
-
-				return deps('core.pure')(function(sys) {
-					return function(app) {
-
-						var module = sys.get('components.home');
-						var title  = app.deps('components.title').create('title', module);
-
-						return [ title.pure() ].lift(function(t) {
-
-							t.render('purejs');
-							t.attach();
-
-							return app;
-
-						}).cont();
-
+			control: {
+				main: {
+					drop: function(evt) {
+						console.log(evt);
+						return evt;
 					}
-				})(this);
+				}
 			},
-
 			events: {
 				data: {
-					'change:title.run':'launch'
+					'change:drag-programs.drop':'data.control.main.drop'
 				}
 			}
-
 		};
 
 	});

@@ -343,8 +343,15 @@ define(function() {
 				var lstnr = sys.klass('Listener').$ctor;
 				store.listener = lstnr.init('instance', 'store');
 				store._events  = sys.get('events').child({ name: 'events', parent: store });
+
+				// === SCHEMA === //
 				var schema = klass.prop('$schema', sys.get('schema').child('$instance'));
 				schema.parse(type.schema, 3, true);
+
+				// === PROGRAM === //
+				// var program = klass.prop('$program', sys.get('schema').child('$program'));
+				// program.parse(type.program, 3, true);
+
 				klass.prop('save', type.save(type.kont()));
 				proto.load = type.load.call(parse);
 				return klass;

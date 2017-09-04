@@ -8,7 +8,10 @@ define(function() {
 
 			core: [ 'pure', 'instance' ],
 
-			components: [ 'view', 'layout', 'accordion', 'modal', 'tabs', 'form', '$code-box', '$code-edit', 'drag-and-drop', 'nav-bar' ]
+			components: [
+				'view', 'layout', 'accordion', 'modal', 'tabs',
+				'form', '$code-box', '$code-edit', 'drag-and-drop', 'nav-bar'
+			]
 
 		}
 
@@ -21,20 +24,20 @@ define(function() {
 					var el  = this.view().$el().run();
 					var app = this;
 					var lay = app.child('layout', app.deps('components.layout'));
-					lay.grid([ 0, 2 ], [ 3, 1 ], function(elem, row, col) {
+					lay.grid(1, [ 3, 1 ], function(elem, row, col) {
 						if (col == 1) elem.classList.add('col-md-3', 'col-xs-4');
 						else if (col) elem.classList.add('col-md-9', 'col-xs-8');
 						return elem;
 					}).bind(app.klass('Maybe').of).ap(app.$fn('append')).run(function(r) {
 						var mdl = app.get('modal');
 
+						var tst = r.to('io');
 						mdl.read = mdl.view().read().run('main', { title: 'T123' });
 						mdl.addButton('cancel', 'Cancel');
 						mdl.addButton('delete', 'Delete', false);
 						mdl.addButton('save', 'Save');
 						mdl.addButton('run', 'Run');
 						mdl.addButton('add', 'Add', false);
-						mdl.read.attach.run(r.first().map(function(e) { return e.children.item(1); }));
 						mdl.display('none');
 						mdl.proxy('click', 'button', 'modal.button');
 
@@ -45,13 +48,20 @@ define(function() {
 						app.observe(sys.get('instance'), 'change', '%.inst.%', 'data.control.inst.change');
 					});
 				},
-				initialize: function() {
-					this.control('main').accor().cont().run(function(accor) {
+				accor: function() {
+					return this.control('main').accor().cont().bind(function(accor) {
 						sys.klass('instance').load.of().run();
+						return accor;
 					});
+				},
+				initialize: function() {
 					var nav = this.get('navbot');
 					nav.$fn('attrs').run({ 'class': 'navbar-bottom' });
 					nav.attach(this.$el('#r1'));
+					var rtr = this.get('router');
+					if (!rtr.equals(rtr.getActiveRouter().uid())) {
+						rtr.navigate('factory');
+					}
 				}
 			},
 
@@ -89,7 +99,7 @@ define(function() {
 					order: function(evt) {
 						if (evt.value && evt.value.drag && evt.value.drop) {
 							var curr = this.root('tabs.data.main.data.%current');
-							var drag = curr.get(evt.value.drag.getAttribute('data-bind-ext'));
+							var drag = curr.get(evt.value.drag.firstElementChild.getAttribute('data-bind-ext'));
 							var drop = curr.get(evt.value.drop.getAttribute('data-bind-ext'));
 							var inop = curr.get('inop');
 							var vals = inop.get('nodes').filter(function(v, k, o, i) {
@@ -382,6 +392,8 @@ define(function() {
 					display: function(show) {
 						var root  = this.root();
 						var modal = root.get('modal');
+						var fctry = root.get('factory');
+						if (!fctry) root.get('router.types').navigate('factory');
 						modal.display(show);
 						var tabs  = root.get('tabs');
 						if (!tabs.tab()) {
@@ -396,10 +408,6 @@ define(function() {
 						return accor.once(function(a) {
 							a.control('main').run();
 							a.observe('change', 'data.current.item', root.handler('data.control.main.toggle'));
-							root.$fn('find').map(function(elem) {
-								a.attach(elem);
-								a.toggle('types');
-							}).run('#r0c1');
 						});
 					},
 					toggle: function(evt) {
@@ -415,21 +423,78 @@ define(function() {
 							var edit = root.component('codeb', 'code-box');
 							return edit.once(function(cb) {
 								var module = cb.module();
-								var tabs   = module.get('tabs');
-								cb.attach(tabs.pane('tab4').$pane);//module.$el('#r0c2'));
+								cb.attach(module.get('tabs').pane('tab4').$pane);
 								module.control('tabs').toggle(evt);
 							});
 						}
 					}
 				},
-				routes: {
-					types: function(evt) {
-						console.log(evt);
-						return true;
+				state: {
+					current: function(evt) {	
+						if (this[evt.value]) this[evt.value](evt);
+						return evt;
+					},
+					drag: function() {
+						return sys.eff('sys.loader.component').run('components/drag-and-drop/drag-and-drop').bind(function(x) {
+
+							return x.create({ name: 'drag', parent: sys.get('components.types.programs') }).pure();
+
+						}).bind(function(drag) {
+							var home = drag.mixin({ opts: { draggable: '.draggable tr a' } }).run(sys.get('components.types'));
+							var enbl = home.enable('.accordion', '.panel .panel-collapse tbody');
+							enbl.run();
+
+							return drag;
+						});
+					},
+					drop: function(evt) {
+						if (evt.value && evt.value.drop) {
+							var drop = evt.value.drop;
+							var root = this.root();
+							if (root.get('programs').nid() == drop.id) {
+								console.log(evt);
+								var inst = sys.get(evt.value.drag.getAttribute('data-path'));
+								var name = inst.get('name');
+								var inid = inst.get('inid');
+								var drag = evt.value.drag;
+								drag.id  = inid;
+								drag.className = 'draggable';
+								root.get('programs').$el().lift(function(el, item) {
+									el.querySelector('.drop-wrap').appendChild(item);
+									return item;
+								}).run(drag);
+							}
+						}
+						return evt;
+					},
+					accor: function(evt) {
+						var root = this.root();
+						if (!root.state('factory') && root.state('factory', true)) {
+							root.accor().bind(root.bin(function(root, accor) {
+								accor.attach(root.$el('#r0c1'));
+								return root.control('state').drag();
+							})).run(function(drag) {
+								root.observe(drag, 'change', 'drop', 'data.control.state.drop');
+								console.log(drag);
+							});
+						}
+						return evt;
+					},
+					factory: function(evt) {
+						if (evt.action == 'create') {
+							var root  = this.root();
+							var modal = root.get('modal');
+							modal.attach(root.get('factory').$el());
+							return this.accor(evt);
+						}
+						return evt;
 					},
 					programs: function(evt) {
-						console.log(evt);
-						return true;
+						if (evt.action == 'create') {
+							this.root().get('programs').drag();
+							return this.accor(evt);
+						}
+						return evt;
 					}
 				}
 			},
@@ -454,7 +519,7 @@ define(function() {
 							t.item({id:'tab3', path:'tab3', name: 'Run'});
 							t.item({id:'tab4', path:'tab4', name: 'Klass'});
 
-							n.item({ id: 'types/types', name: 'Types' });
+							n.item({ id: 'types/factory', name: 'Factory' });
 							n.item({ id: 'types/programs', name: 'Programs' });
 
 							comps.tabs = t;
@@ -512,6 +577,12 @@ define(function() {
 			data: {
 				main: {
 					inst: {}
+				},
+				params: {
+					attach: {
+						any: '#r0c2',
+						accor: '#r0c1'
+					}
 				}
 			},
 
@@ -520,7 +591,8 @@ define(function() {
 					'change:tabs.state.current':'data.control.tabs.toggle',
 					'change:tabs.data.main.data.%':'data.control.form.fn.toggle',
 					'change:modal.button':'data.control.main.button',
-					'change:drag.drop':'data.control.inst.order'
+					'change:drag.drop':'data.control.inst.order',
+					'change:state.current':'data.control.state.current'
 				}
 			}
 

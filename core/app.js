@@ -10,7 +10,7 @@
 
             var root = this.store();
             var sys  = root.get('sys');
-            var proc = root.child('process');
+            var proc = root.get('process');
             var info = $info.call(proc);
             proc.set('clean',    $clean);
             proc.set('schedule', $schedule);
@@ -38,7 +38,7 @@
             }
             tick.enqueue = sys.ctor.base.prototype.enqueue = $enqueue(tick.store, tick.schedule);
             tick.next    = $next;
-
+            //var queue = proc.set('script', proc.get('script').timer(tick.enqueue));
             sys.klass('Cont').prop('next', tick.next);
             return proc;
         }),
@@ -531,13 +531,14 @@
                             }
                         }),
                         (function ap(monad) {
-                            return monad && monad.map ? monad.map(this.unsafePerformIO) : this.ap(this.of(monad));
+                            //monad && monad.map
+                            return this.test(monad) ? monad.map(this.unsafePerformIO) : this.ap(this.of(monad));
                         }),
                         (function apply(monad) {
                             return monad.ap(this);
                         }),
                         (function pipe(f) {
-                            return this.fx(this.$fn.compose(this.unsafePerformIO)(f));
+                            return this.fx(this.$fn.compose(f)(this.unsafePerformIO));
                         }),
                         (function lift(f) {
                             return f ? this.map(function(v1) {
@@ -944,6 +945,77 @@
                         this.find('Functor').prop('toMaybe',  type.toMaybe(klass));
                         IO.prop('runMaybe', type.runMaybe(klass));
                         this.root().base.prototype.maybe = type.maybe(klass);
+                    }
+                };
+            }),
+        // === Either === //
+            (function Either() {
+                return {
+                    parent: 'Maybe',
+                    klass: function Either(x) {
+                        this.$$init(x);
+                    },
+                    ext: [
+                        (function $$init(x) {
+                            return this.mv = x;
+                        })
+                    ],
+                    left: {
+                        klass: function Left(x) {
+                            this.__value = x;
+                        },
+                        ext: [
+                            (function map(f) {
+                                return this;
+                            })
+                        ],
+                        of: function(Left) {
+                            return (Left.of = function(x) {
+                                return new Left(x);
+                            });
+                        },
+                        init: function(type, klass, sys) {
+                            klass.$ctor.of = type.of;
+                        }
+                    },
+                    right: {
+                        klass: function Right(x) {
+                            this.__value = x;
+                        },
+                        ext: [
+                            (function map(f) {
+                                return Right.of(f(this.__value));
+                            })
+                        ],
+                        of: function(Right) {
+                            return (Right.of = function(x) {
+                                return new Right(x);
+                            });
+                        },
+                        init: function(type, klass, sys) {
+                            klass.$ctor.of = type.of;
+                        }
+                    },
+                    either: function() {
+                        var Either = this.Either = this.prop('curry')(function(f, g, e) {
+                            if (!e) return f();
+                            else if (!e.constructor) return f(e);
+                            else if (e instanceof Left) return f(e.__value);
+                            else if (e instanceof Right) return g(e.__value);
+                            else return f(e);
+                        });
+                        this.prop('toEither', function(failVal) {
+                            return this.isNothing() ? this.left(failVal) : this.right(this.mv);
+                        });
+                        return Either;
+                    },
+                    init: function(type, klass, sys) {
+                        type.either.call(this);
+                        klass.prop('$fn', {
+                            left: this.parse(type.left),
+                            right: this.parse(type.right),
+                            either: type.either.call(this)
+                        });
                     }
                 };
             }),
@@ -1378,6 +1450,8 @@
                             Array.prototype.make    = ext.utils.call2(set.make);
                             Array.prototype.arrid   = ext.aid;
                             Array.prototype.info    = ext.utils.call(sys.get('utils.point.map')(ext.log));
+                            Array.prototype.klass   = ext.functor.find;
+                            Array.prototype.to      = ext.functor.to;
                             return ext;
                         }),
                         (function() {
@@ -3210,8 +3284,8 @@
                                         }
                                     }
                                     return !!elem;
-                                } // DOMeventHandler creates the DOM event specific *handler* proxy
-                            }),   // so the main handler(s) to which the listeners will be attached
+                                }
+                            }),
                             (function createEvent(evt) {
                                 return {
                                     src: 'dom',
@@ -3245,8 +3319,8 @@
                                         return element.pertains(evt);
                                     }
                                     return false;
-                                } // DOMeventHandler creates the DOM event specific *handler* proxy
-                            }),   // so the main handler(s) to which the listeners will be attached
+                                }
+                            }),
                             (function createEvent(evt) {
                                 return {
                                     src: 'data',
@@ -3354,6 +3428,15 @@
                                 return true; 
                             }));
                         }),
+                        (function navigate(route) {
+                            return this.maybe().map(function(comp) {
+                                return comp.module();
+                            }).map(function(mod) {
+                                return mod.get('router');
+                            }).map(function(rtr) {
+                                return rtr.navigate(route);
+                            })
+                        }),
                         (function origin(plural) {
 
                             return plural ? 'components' : 'component';
@@ -3374,9 +3457,11 @@
                             }));
                         }),
                         (function display(state) {
-                            return this.maybe().map(function(comp) {
-                                return comp.view().parent('$fn.display').run(comp.state('display', state || 'none'));
-                            });
+                            return (this._display || (this._display = this.klass('io').of(this.view().parent('$fn.display')).lift(function(display, comp) {
+                                return this.fx(function(value) {
+                                    return comp.state('display') !== value ? display.run(comp.state('display', value)) : value;
+                                }).toMaybe();
+                            }).run(this))).run(state || 'none');
                         }),
                         (function update() {}),
                         (function queue(path) {
@@ -3441,27 +3526,28 @@
                                 return assets.lookup(comp.get('type')).orElse(assets.get(comp.cid())).chain(function(node) {
                                     return node.get(comp.get('type'));
                                 });
-                            }).ap(this).unit();
+                            }).ap(this);
                         }),
                         (function make(cont) {
-                            var loca = this.loca(), kont;
-                            var cell = loca.get('js');
-                            if (!cell) {
-                                cell = this.cell();
-                                cell.create = this.constructor.create;
-                                loca.set('js', cell).set(this.constructor);
-                                kont = cont;
-                            }else {
-                                kont = cell.kont();
-                            }
-                            this._cont || (this._cont = kont.bind(this.comp(function(klass) {
-                                if (this.conf.events)  this.data({ events: this.conf.events });
-                                if (this.conf.proxy)   this.data({ proxy: this.conf.proxy });
-                                if (this.conf.control) this.control().update(this.conf.control);
-                                if (this.conf.data  && this.conf.data.events) this.data({ events: this.conf.data.events });
-                                return this.events();
-                            })));
-                            return this;
+                            return this.loca().lift(function(loca, component) {
+                                var cell = loca.get('js'), kont;
+                                if (!cell) {
+                                    cell = component.cell();
+                                    cell.create = component.constructor.create;
+                                    loca.set('js', cell).set(component.constructor);
+                                    kont = cont;
+                                }else {
+                                    kont = cell.kont();
+                                }
+                                component._cont || (component._cont = kont.bind(component.comp(function(klass) {
+                                    if (this.conf.events)  this.data({ events: this.conf.events });
+                                    if (this.conf.proxy)   this.data({ proxy: this.conf.proxy });
+                                    if (this.conf.control) this.control().update(this.conf.control);
+                                    if (this.conf.data  && this.conf.data.events) this.data({ events: this.conf.data.events });
+                                    return this.events();
+                                })));
+                                return component;
+                            }).ap(this).unit();
                         }),
                         (function cont() {
                             var cell = this._cell;
@@ -3550,6 +3636,10 @@
                     parent: 'Component',
                     klass: function Module(x) {
                         this.$super(x);
+                        this.set('modules', []);
+
+                        var main = this.isModule(this.parent());
+                        if (main) main.push('modules', this);
 
                         var scope = this.get('root.config.modules', this.cid(), 'modules');
                         if (scope) {
@@ -3565,6 +3655,18 @@
                         }
                     },
                     ext: [
+                        (function loca() {
+                            return sys.get('assets').lookup(this.origin(true)).lift(function(assets, comp) {
+                                var rel = comp.relative(comp.get('root.components')).slice(0, -1);
+                                return (rel.length ? assets.get(rel) : assets).get(comp.get('type'), comp.get('type'));
+                            }).ap(this);
+                        }),
+                        (function map(f) {
+                            return this._store.map(f);
+                        }),
+                        (function isModule(value) {
+                            return value && value instanceof this.___ ? value : false;
+                        }),
                         (function router(evt, hndl) {
                             var rtrm = evt.value, node;
                             if (evt.action == 'create' && rtrm.cid() == this.cid()) {
@@ -3597,77 +3699,155 @@
                                 return comp;
                             }).ap(this.maybe(this));
                         }),
-                        (function(display, show, make, add) {
+                        (function(launch, ready, base, start, wrap, init, load, route, display, create) {
                             return function routes(router) {
-                                return add(
-                                    make(sys.eff('sys.loader.component').init(),
-                                        show(sys.eff('dom.elements.children').run(display('none'), '#root')('>'), this))
-                                )(router, router.parent('config.modules').store(), [ 'modules' ]).run(function() {
+                                ready(launch(this.get('root.components')));
+                                return base({
+
+                                    module: this,
+                                    coyo: sys.klass('coyoneda'),
+                                    loader: sys.eff('sys.loader.component').init()
+
+                                }, start, wrap, init, load, route, display, create)(router, router.parent('config.modules').store()).run(function() {
+
                                     router.startup();
+
                                 });
                             }
                         })(
-                            (function(display) {
-                                return function(elem) {
-                                    var comp = sys.find(elem.id.slice(1));
-                                    if (comp) comp = comp.ref().parent();
-                                    if (comp) comp.display(display);
-                                    else elem.style.display = typeof display != 'undefined' ? display : (elem.style.display != 'none' ? 'none' : '');
-                                    return elem;
+                            (function $launch(components) {
+                                return function() {
+                                    components.initialize();
+                                    components.state('DOMready', true);
                                 }
                             }),
-                            (function(display, main) {
-                                return function(show) {
-                                    show.display('none');
-                                    show.parent().initialize();
-                                    show.attach('#root');
+                            (function $nativeOnDocReady(fn) {
+                                // First and foremost - already ready??
+                                if (document.readyState === "complete") {
+                                    fn();
+                                    // Mozilla, Opera and webkit nightlies currently support this event
+                                }else if ( document.addEventListener ) {
+                                    // Use the handy event callback
+                                    document.addEventListener("DOMContentLoaded", function() {
+                                        document.removeEventListener( "DOMContentLoaded", arguments.callee, false );
+                                        fn();
+                                    }, false);
 
-                                    display.run().run(function() {
-                                        show.display('block').chain(function() {
-                                            var root = document.body;
-                                            var curr = main.state('current');
-                                            if (curr) root.classList.remove(curr);
-                                            root.classList.add(main.state('current', show.cid()));
-                                        });
+                                    // If IE event model is used
+                                } else if (document.attachEvent) {
+                                    // ensure firing before onload,
+                                    // maybe late but safe also for iframes
+                                    document.attachEvent("onreadystatechange", function() {
+                                        if ( document.readyState === "complete" ) {
+                                            document.detachEvent( "onreadystatechange", arguments.callee );
+                                            fn();
+                                        }
                                     });
                                 }
                             }),
-                            (function(loader, display) {
-                                return function(scope) {
-                                    return function(current) {
-                                        var mod = this.get('info', current, 'module');
-                                        loader.run(scope.concat([ mod, mod ]).join('/'), current).run(display);
-                                        return true;
+                            (function $base($items, $start, $wrap, $init, $load, $route, $display, $create) {
+                                // init - sends the router applied on the router coyo to wrap
+                                // init - returns a function that receives the route and takes care of the rest
+                                return $init($route.call($items), $wrap($load.call($items), $display.call($items)), $create);
+                            }),
+                            (function $start(initial) {
+                                return function(router, modules) {
+                                    return initial(router, modules)(router, modules);
+                                }
+                            }),
+                            (function $wrap(load, display) {
+                                return function wrap(base) {
+                                    return function(route) {
+                                        return load.apply(base.lift(route)).lift(display);
                                     }
                                 }
                             }),
-                            (function(make) {
-                                return function $recur(router, modules, scope) {
+                            (function $init(route, wrap, create) {
+                                return function init(router, modules) {
+                                    return create(init, wrap(route.lift(router)))(router, modules);
+                                }
+                            }),
+                            (function $load() {
+                                return this.coyo.of(function $loader(loader) {
+                                    return function(scope) {
+                                        return loader.run(scope.slice(1).join('/'), scope.first());
+                                    }
+                                }, this.loader);
+                            }),
+                            (function $route() {
+                                return this.coyo.of(function $loader(router) {
+                                    return function(current) {
+                                        var mod = router.get('info', current, 'module');
+                                        return [ current, 'modules' ].concat(router.scope()).concat([ mod, mod ]);
+                                    }
+                                });
+                            }),
+                            (function $display() {
+                                return this.coyo.of(function(show) {
+                                    return show.parent().get('modules').filter(function(m) {
+                                        if (show.equals(m)) return true;
+                                        m.display('none');
+                                    }).first();
+                                }).map(function(show) {
+                                    show.attach();
+                                    show.display('block').chain(function() {
+                                        var root = document.body;
+                                        var main = show.parent();
+                                        var curr = main.state('current');
+                                        if (curr) root.classList.remove(curr);
+                                        root.classList.add(main.state('current', show.cid()));
+                                    });
+                                });
+                            }),
+                            (function $create(init, make) {
+                                return function $recur(router, modules) {
                                     return modules.bind(function(v, k, i, o) {
                                         if (v.route) {
-                                            router.addRoute(v.route, make(scope), { description: v.label, module: v.name || v.route }, v.alias);
+                                            router.addRoute(v.route, { description: v.label, module: v.name || v.route }, v.alias)(make(v.route));
                                         }
                                         if (v.modules) {
-                                            return $recur(
+                                            return init(
                                                 router.getScopeRouter(v.route),
-                                                    (v.modules = o.of({ name: 'modules', parent: o }).parse(v.modules)),
-                                            scope.concat(router.get('info', v.route, 'module')));
+                                                (v.modules = o.of({ name: 'modules', parent: o }).parse(v.modules).store())
+                                            );
                                         }
                                     });
                                 }
                             })
                         )
                     ],
-                    $el: function() {
-                        return document.getElementById('root');
+                    $el: {
+                        fn: function() {
+                            return document.getElementById('root');
+                        },
+                        io: function(elem) {
+                            return this.pure(function(selector) {
+                                return !selector || selector == '*' ? elem() : elem().querySelector(selector);
+                            }).toMaybe();
+                        },
+                        fx: function(io) {
+                            return function(selector) {
+                                return io.run(selector);
+                            }
+                        }                    
+                    },
+                    $attach: function(attach) {
+                        return function() {
+                            return this.parent().view().attach(this).lift(function(selector, child) {
+                                return attach.call(child, selector);
+                            }).ap(this);
+                        }
                     },
                     init: function(type, klass, sys) {
                         var comp = this.find('Component'), root = sys.root;
+                        klass.prop('___', klass.$ctor);
+                        klass.prop('attach', type.$attach(klass.prop('attach')));
                         var node = comp.prop('_node', root.child('components', klass.$ctor));
-                        node.$el = node.konst(this.find('IO').pure(type.$el));
+                        node.$el = type.$el.fx(type.$el.io.call(this.find('IO').$ctor, type.$el.fn));
                         var disp = comp.prop('listener', node.listener);
                         var lstr = this.find('Listener').$ctor;
                         comp.prop('dom', lstr.init('dom'));
+                        node.observe('change', 'state.ready', 'onAttach');
                     }
                 };
             }),

@@ -1,0 +1,9 @@
+.programs > .dropdown {
+	position: absolute; top: 0; left: 0; z-index: 2;
+}
+.programs > .drop-wrap .draggable {
+    position: absolute;
+    border: 1px solid #EEE;
+    padding: 20px;
+    z-index: 10001;
+}

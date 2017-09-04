@@ -43,7 +43,7 @@ define(function() {
 							if (rtr._started < 2 && (rtr.start())) {
 								rtr.observe('change', 'active', rtr.run.bind(rtr));
 								if (!rtr.get('active')) {
-									var hash = window.location.hash.replace('#', ''),
+									var hash = window.location.hash.replace('#', '') || 'home',
 										parts  = hash.split('/'),
 										length = parts.length,
 										index  = rtr._scope.length,
@@ -53,7 +53,7 @@ define(function() {
 									while(index < parts.length) {
 										test = parts.slice(index, index+1).join('/');
 										if (rtr.testIfExists(test)) {
-											result = rtr.setActiveRoute(test);//parts.slice(index, index+1).join('/'));
+											result = rtr.setActiveRoute(test);
 											break;
 										}else {
 											parts.pop();
@@ -107,7 +107,7 @@ define(function() {
 						}),
 						(function getActiveRouter(arg) {
 							var router = this.root, test = router,
-								active = router.getFromHash().split('/'),//(router.get('active') || '').split('/'),
+								active = router.getFromHash().split('/'),
 								scopes = router.get('scopes');
 							if (active && scopes) {
 								while ((test = scopes.get(active.shift())) && test instanceof router.constructor) {
@@ -147,9 +147,9 @@ define(function() {
 							}
 						}),
 						(function run(evt) {
-							if (evt.target == 'active') {
+							if (evt.target == 'active' && evt.value) {
 								var router  = this.getActiveRouter();
-								console.log('ROUTER: handler = ', this.identifier(), ' relay = ', router.identifier());
+								console.log('ROUTER: handler =', this.identifier(), 'relay =', router.identifier());
 								var active  = evt.value.split('/').pop();
 								var handler = router.getRoute(active);
 								if (handler && handler instanceof Function) {
@@ -184,14 +184,15 @@ define(function() {
 						(function clearActiveRoute() {
 							var active = this.getActiveRouter(), depth = this._scope.length, test = active;
 							while (active && active._scope && active._scope.length > depth) {
-								active.val('active', null);
-								if (active._scope.length && (test = active.parent()) && test instanceof Router) active = test;
+								active.set('active', null);
+								if (active._scope.length && (test = active.parent()) && test instanceof this.constructor) active = test;
 								else break;
 							}
 							return this;
 						}),
 						(function getFromHash(fallback) {
 							var route = self.location.hash.slice(1);
+							if (route) route = route.replace(/\/$/, '');
 							return route && route.length ? route : fallback || '';
 						}),
 						(function navigate(route) {
@@ -224,16 +225,24 @@ define(function() {
 							}
 							return false;
 						}),
-						(function addRoute(name, handler, info, aliasIfStringOrUseAsDefaultIfTrue) {
+						(function addRoute(name, info, aliasIfStringOrUseAsDefaultIfTrue) {
 							var routes = this.getRoutes();
-							routes.set(name, Function.prototype.bind.bind(Function.prototype.call, handler, this));
 							if (info === true) this.setDefault(name);
 							else if (typeof info == 'string') this.addAlias(info, name);
 							else if (typeof info != 'undefined') this.addInfo(name, info);
 							if (aliasIfStringOrUseAsDefaultIfTrue || typeof aliasIfStringOrUseAsDefaultIfTrue == 'string') {
 								this.addAlias(aliasIfStringOrUseAsDefaultIfTrue === true ? '' : aliasIfStringOrUseAsDefaultIfTrue, name);
 							}
-							return this;
+							return this.bin(function(router, name) {
+								return function(handler) {
+									if (handler instanceof Function) {
+										routes.set(name, Function.prototype.bind.bind(Function.prototype.call, handler, router));
+									}else if (handler.$atom) {
+										routes.set(name, handler.$atom());
+									}
+									return router;
+								}
+							})(name);
 						}),
 						(function addAlias(name, alias) {
 							return this.getRoutes().set(name, alias);

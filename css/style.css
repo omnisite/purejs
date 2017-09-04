@@ -32,6 +32,9 @@ body.home > nav {
 .cell.row {
   margin: 0;
 }
+.cell.col .module {
+  height: 100%;
+}
 #r0.row {
   height: 90%; margin: 0;
   padding-top: 15px;
